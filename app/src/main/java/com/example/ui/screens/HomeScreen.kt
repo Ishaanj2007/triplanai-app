@@ -1,0 +1,2571 @@
+package com.example.ui.screens
+
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import com.example.data.local.TripEntity
+import com.example.ui.theme.*
+import com.example.viewmodel.TripViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    viewModel: TripViewModel,
+    onNavigateToQuestions: () -> Unit,
+    onNavigateToItinerary: () -> Unit,
+    onNavigateToSavedTrips: () -> Unit
+) {
+    val savedTrips by viewModel.savedTrips.collectAsState()
+    val destinationInput by viewModel.destination.collectAsState()
+
+    var apiSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val targetSettingsTab by viewModel.shouldOpenSettingsTab.collectAsState()
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var selectedSettingsTab by remember { mutableStateOf(0) }
+
+    LaunchedEffect(targetSettingsTab) {
+        targetSettingsTab?.let { tab ->
+            selectedSettingsTab = tab
+            showSettingsDialog = true
+            viewModel.consumeOpenSettings()
+        }
+    }
+
+    LaunchedEffect(destinationInput) {
+        if (destinationInput.isBlank() || destinationInput.length < 2) {
+            apiSuggestions = emptyList()
+            return@LaunchedEffect
+        }
+
+        kotlinx.coroutines.delay(300)
+
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val encodedQuery = java.net.URLEncoder.encode(destinationInput, "UTF-8")
+                val url = java.net.URL("https://api.teleport.org/api/cities/?search=$encodedQuery")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+
+                if (connection.responseCode == 200) {
+                    val text = connection.inputStream.bufferedReader().use { it.readText() }
+
+                    val regex = """"matching_full_name":\s*"([^"]+)"""".toRegex()
+                    val matches = regex.findAll(text)
+                        .map { it.groupValues[1] }
+                        .map {
+                            val parts = it.split(",")
+                            if (parts.size >= 3) {
+                                "${parts[0].trim()}, ${parts[parts.lastIndex].trim()}"
+                            } else {
+                                it
+                            }
+                        }
+                        .distinct()
+                        .take(3)
+                        .toList()
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        apiSuggestions = matches
+                    }
+                } else {
+                    throw Exception("Non-200 response")
+                }
+            } catch (e: Exception) {
+                val allGlobalCities = listOf(
+                    "Goa, India", "Japan", "Manali, India", "Paris, France", "Ladakh, India", "Bali, Indonesia",
+                    "London, UK", "New York, USA", "Tokyo, Japan", "Rome, Italy", "Barcelona, Spain",
+                    "Maldives", "Singapore", "Dubai, UAE", "Bangkok, Thailand", "Kashmir, India",
+                    "Kerala, India", "Agra, India", "Jaipur, India", "Udaipur, India", "Sydney, Australia",
+                    "Switzerland", "Mumbai, India", "Delhi, India", "Bengaluru, India", "Chennai, India",
+                    "Kolkata, India", "Hyderabad, India", "Pune, India", "Amsterdam, Netherlands",
+                    "Berlin, Germany", "Vienna, Austria", "Prague, Czech Republic", "Lisbon, Portugal",
+                    "Madrid, Spain", "Athens, Greece", "Cairo, Egypt", "Cape Town, South Africa",
+                    "Rio de Janeiro, Brazil", "Buenos Aires, Argentina", "Toronto, Canada", "Vancouver, Canada",
+                    "San Francisco, USA", "Los Angeles, USA", "Chicago, USA", "Miami, USA", "Honolulu, USA"
+                )
+                val matches = allGlobalCities.filter {
+                    it.contains(destinationInput, ignoreCase = true) && !it.equals(destinationInput, ignoreCase = true)
+                }.take(3)
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    apiSuggestions = matches
+                }
+            }
+        }
+    }
+
+    var showDeleteDialogForId by remember { mutableStateOf<Int?>(null) }
+    var showAllTrendingDialog by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ArtBackground)
+            .statusBarsPadding(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 840.dp),
+            contentPadding = PaddingValues(bottom = 60.dp)
+        ) {
+            // 1. HERO SECTION
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)
+                ) {
+                    // Header Bar with Brand and Settings Gear
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Explore,
+                                contentDescription = null,
+                                tint = ArtPrimaryPurple,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "TriplanAi",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ArtTextDark
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showSettingsDialog = true },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(ArtCardBackground, CircleShape)
+                                .border(1.dp, ArtBorderDark, CircleShape)
+                                .shadow(elevation = 2.dp, shape = CircleShape)
+                                .testTag("settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = ArtTextDark,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Responsive Hero Container
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val availableWidth = maxWidth
+
+                        val headingAnnotatedString = buildAnnotatedString {
+                            append("Where ")
+                            withStyle(
+                                SpanStyle(
+                                    color = ArtPrimaryPurple,
+                                    fontStyle = FontStyle.Italic,
+                                    fontFamily = FontFamily.Serif
+                                )
+                            ) {
+                                append("do you")
+                            }
+                            append("\nwant to go?")
+                        }
+
+                        val subtitleText = "Answer a few questions and our AI will build your perfect, optimized adventure in seconds."
+
+                        if (availableWidth >= 600.dp) {
+                            // TABLET / EXPANDED LAYOUT (Two-column: Left = Heading + Subtitle, Right = Illustration)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 24.dp)
+                                ) {
+                                    Text(
+                                        text = headingAnnotatedString,
+                                        fontSize = 36.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArtTextDark,
+                                        lineHeight = 40.sp,
+                                        letterSpacing = (-0.8).sp
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = subtitleText,
+                                        fontSize = 14.sp,
+                                        color = ArtGrayMuted,
+                                        lineHeight = 21.sp
+                                    )
+                                }
+
+                                HeroTravelIllustration(
+                                    modifier = Modifier
+                                        .widthIn(min = 140.dp, max = 180.dp)
+                                        .aspectRatio(1.3f)
+                                )
+                            }
+                        } else {
+                            // PHONE LAYOUT (Responsive Row with Heading on left and Illustration on right, Subtitle below)
+                            val isSmallPhone = availableWidth < 345.dp
+                            val isLargePhone = availableWidth >= 480.dp
+
+                            val headingFontSize = when {
+                                isSmallPhone -> 25.sp
+                                isLargePhone -> 33.sp
+                                else -> 30.sp
+                            }
+                            val headingLineHeight = when {
+                                isSmallPhone -> 29.sp
+                                isLargePhone -> 37.sp
+                                else -> 34.sp
+                            }
+                            val illustrationWidth = when {
+                                isSmallPhone -> 64.dp
+                                isLargePhone -> 120.dp
+                                else -> 95.dp
+                            }
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = headingAnnotatedString,
+                                        fontSize = headingFontSize,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArtTextDark,
+                                        lineHeight = headingLineHeight,
+                                        letterSpacing = (-0.7).sp,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(end = if (isSmallPhone) 6.dp else 12.dp)
+                                    )
+
+                                    HeroTravelIllustration(
+                                        modifier = Modifier
+                                            .width(illustrationWidth)
+                                            .aspectRatio(1.3f)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(if (isSmallPhone) 8.dp else 10.dp))
+
+                                Text(
+                                    text = subtitleText,
+                                    fontSize = if (isSmallPhone) 12.sp else 13.sp,
+                                    color = ArtGrayMuted,
+                                    lineHeight = if (isSmallPhone) 17.sp else 19.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. DESTINATION / PLAN CARD
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .shadow(
+                            elevation = 6.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            spotColor = ArtPrimaryPurple.copy(alpha = 0.12f),
+                            ambientColor = ArtPrimaryPurple.copy(alpha = 0.08f)
+                        ),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+                    border = BorderStroke(1.dp, ArtBorderDark)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "ENTER DESTINATION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArtPrimaryPurple,
+                            letterSpacing = 1.2.sp
+                        )
+
+                        // Location Input Field
+                        TextField(
+                            value = destinationInput,
+                            onValueChange = { viewModel.destination.value = it },
+                            placeholder = {
+                                Text(
+                                    "Where do you want to go?",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 14.sp
+                                )
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = ArtGrayLight,
+                                unfocusedContainerColor = ArtGrayLight,
+                                focusedTextColor = ArtTextDark,
+                                unfocusedTextColor = ArtTextDark,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                cursorColor = ArtPrimaryPurple
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, ArtBorderDark, RoundedCornerShape(16.dp))
+                                .testTag("destination_input"),
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Place,
+                                    contentDescription = null,
+                                    tint = ArtPrimaryPurple,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.destination.value = "Goa, India"
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.GpsFixed,
+                                        contentDescription = "Current location",
+                                        tint = ArtGrayMuted,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        )
+
+                        // API Suggestions
+                        if (apiSuggestions.isNotEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                item {
+                                    Text("Suggestions:", fontSize = 11.sp, color = ArtGrayMuted, fontWeight = FontWeight.Bold)
+                                }
+                                items(apiSuggestions) { suggestion ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(ArtSecondaryPurple, RoundedCornerShape(8.dp))
+                                            .clickable { viewModel.destination.value = suggestion }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = suggestion,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ArtPrimaryPurple
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Primary Purple CTA Button
+                        Button(
+                            onClick = {
+                                if (destinationInput.isNotBlank()) {
+                                    onNavigateToQuestions()
+                                }
+                            },
+                            enabled = destinationInput.isNotBlank(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .testTag("search_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ArtPrimaryPurple,
+                                contentColor = Color.White,
+                                disabledContainerColor = Color(0xFFE2E8F0),
+                                disabledContentColor = Color(0xFF94A3B8)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        "PLAN MY TRIP",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        // Feature Strip inside card below CTA
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = ArtGrayLight
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FeaturePill(icon = Icons.Default.AutoAwesome, label = "AI Powered")
+                                FeaturePill(icon = Icons.Default.VerifiedUser, label = "Optimized Plans")
+                                FeaturePill(icon = Icons.Default.Bolt, label = "In Seconds")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. TRENDING DESTINATIONS
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TRENDING DESTINATIONS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ArtPrimaryPurple,
+                        letterSpacing = 1.2.sp
+                    )
+                    Text(
+                        text = "View all →",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ArtPrimaryPurple,
+                        modifier = Modifier.clickable { showAllTrendingDialog = true }
+                    )
+                }
+            }
+
+            item {
+                val trendingList = listOf(
+                    TrendingDest("Goa", "Beaches, Nightlife &\nmore", Icons.Default.BeachAccess, ArtPeachGold, ArtPeachGold.copy(alpha = 0.6f)),
+                    TrendingDest("Japan", "Cherry Blossoms, Temples\n& Culture", Icons.Default.CameraAlt, ArtSoftLavender, ArtSoftLavender.copy(alpha = 0.6f)),
+                    TrendingDest("Manali", "Snowy Mountains\n& Adventures", Icons.Default.Terrain, ArtMintGreen, ArtMintGreen.copy(alpha = 0.6f)),
+                    TrendingDest("Paris", "Art, Romance &\nCafes", Icons.Default.Palette, ArtTertiaryPink, ArtTertiaryPink.copy(alpha = 0.6f)),
+                    TrendingDest("Ladakh", "Roadtrip & Blue\nLakes", Icons.Default.DirectionsBike, ArtSecondaryPurple, ArtSecondaryPurple.copy(alpha = 0.6f)),
+                    TrendingDest("Kerala", "Serene Backwaters &\nHouseboats", Icons.Default.DirectionsBoat, ArtMintGreen, ArtMintGreen.copy(alpha = 0.6f)),
+                    TrendingDest("Bali", "Tropical Beaches &\nSurf", Icons.Default.Spa, ArtTertiaryPink, ArtTertiaryPink.copy(alpha = 0.6f)),
+                    TrendingDest("Singapore", "Futuristic Skylines &\nGardens", Icons.Default.Business, ArtSoftLavender, ArtSoftLavender.copy(alpha = 0.6f))
+                )
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(trendingList) { dest ->
+                        TrendingDestinationCard(dest = dest) {
+                            viewModel.destination.value = dest.name
+                            onNavigateToQuestions()
+                        }
+                    }
+                }
+            }
+
+            // 4. MY SAVED TRIPS
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "MY SAVED TRIPS (${savedTrips.size})",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ArtPrimaryPurple,
+                        letterSpacing = 1.2.sp
+                    )
+                    Text(
+                        text = "View all →",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ArtPrimaryPurple,
+                        modifier = Modifier.clickable { onNavigateToSavedTrips() }
+                    )
+                }
+            }
+
+            if (savedTrips.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 6.dp)
+                            .shadow(elevation = 2.dp, shape = RoundedCornerShape(20.dp)),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+                        border = BorderStroke(1.dp, ArtBorderDark)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = ArtPrimaryPurple,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Text(
+                                "No saved itineraries yet.",
+                                color = ArtTextDark,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                "Plan an AI trip and tap 'Save Trip' to archive your itineraries here.",
+                                color = ArtGrayMuted,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(savedTrips) { trip ->
+                    SavedTripRowCard(
+                        trip = trip,
+                        onView = {
+                            viewModel.viewSavedTrip(trip)
+                            onNavigateToItinerary()
+                        },
+                        onDelete = {
+                            showDeleteDialogForId = trip.id
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // Modal: All Trending Destinations
+    if (showAllTrendingDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showAllTrendingDialog = false }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .widthIn(max = 420.dp)
+                    .heightIn(max = 520.dp)
+                    .border(2.dp, ArtBorderDark, RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Trending Destinations",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArtTextDark
+                        )
+                        IconButton(
+                            onClick = { showAllTrendingDialog = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = ArtTextDark)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val allDestinations = listOf(
+                        TrendingDest("Goa", "Beaches, Nightlife & Water Sports", Icons.Default.BeachAccess, ArtPeachGold, ArtPeachGold.copy(alpha = 0.6f)),
+                        TrendingDest("Japan", "Cherry Blossoms, Temples & Tech", Icons.Default.CameraAlt, ArtSoftLavender, ArtSoftLavender.copy(alpha = 0.6f)),
+                        TrendingDest("Manali", "Snowy Mountains & Adventures", Icons.Default.Terrain, ArtMintGreen, ArtMintGreen.copy(alpha = 0.6f)),
+                        TrendingDest("Paris", "Art, Romance, Fashion & Cafes", Icons.Default.Palette, ArtTertiaryPink, ArtTertiaryPink.copy(alpha = 0.6f)),
+                        TrendingDest("Ladakh", "Himalayan Passes & Blue Lakes", Icons.Default.DirectionsBike, ArtSecondaryPurple, ArtSecondaryPurple.copy(alpha = 0.6f)),
+                        TrendingDest("Kerala", "Serene Backwaters & Houseboats", Icons.Default.DirectionsBoat, ArtMintGreen, ArtMintGreen.copy(alpha = 0.6f)),
+                        TrendingDest("Bali", "Tropical Beaches & Volcanic Views", Icons.Default.Spa, ArtTertiaryPink, ArtTertiaryPink.copy(alpha = 0.6f)),
+                        TrendingDest("Singapore", "Futuristic Skylines & Gardens", Icons.Default.Business, ArtSoftLavender, ArtSoftLavender.copy(alpha = 0.6f))
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(allDestinations) { dest ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(dest.badgeBg, RoundedCornerShape(16.dp))
+                                    .border(1.dp, ArtBorderDark.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        viewModel.destination.value = dest.name
+                                        showAllTrendingDialog = false
+                                        onNavigateToQuestions()
+                                    }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = dest.icon,
+                                    contentDescription = null,
+                                    tint = ArtTextDark,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(dest.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = ArtTextDark)
+                                    Text(dest.vibe, fontSize = 12.sp, color = ArtGrayMuted, maxLines = 1)
+                                }
+                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteDialogForId != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialogForId = null },
+            title = { Text("Delete Itinerary", color = ArtTextDark, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to permanently delete this trip plan?", color = ArtGrayMuted) },
+            containerColor = ArtCardBackground,
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialogForId?.let { id ->
+                            viewModel.deleteSavedTrip(id)
+                        }
+                        showDeleteDialogForId = null
+                    }
+                ) {
+                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialogForId = null }) {
+                    Text("Cancel", color = ArtGrayMuted)
+                }
+            }
+        )
+    }
+
+    // Settings Dialog
+    if (showSettingsDialog) {
+        val currentTheme by viewModel.selectedTheme.collectAsState()
+        val currentModel by viewModel.selectedModel.collectAsState()
+        val userKeyVal by viewModel.userApiKey.collectAsState()
+        val groqKeyVal by viewModel.groqApiKey.collectAsState()
+        val autoSaveVal by viewModel.autoSaveEnabled.collectAsState()
+        val selectedPersonality by viewModel.selectedPersonality.collectAsState()
+        val testStatus by viewModel.testConnectionStatus.collectAsState()
+        val isTesting by viewModel.isTestingConnection.collectAsState()
+
+        var selectedSettingsTab by remember { mutableStateOf(1) }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showSettingsDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = ArtBackground
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .widthIn(max = 680.dp)
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .imePadding()
+                    ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { showSettingsDialog = false }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = ArtTextDark,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Settings",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArtTextDark
+                        )
+                    }
+
+                    TabRow(
+                        selectedTabIndex = selectedSettingsTab,
+                        containerColor = Color.Transparent,
+                        contentColor = ArtPrimaryPurple,
+                        divider = {
+                            HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.2f))
+                        }
+                    ) {
+                        listOf("General", "AI Providers", "Support & About").forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedSettingsTab == index,
+                                onClick = { selectedSettingsTab = index },
+                                text = {
+                                    Text(
+                                        text = title,
+                                        fontWeight = if (selectedSettingsTab == index) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                selectedContentColor = ArtPrimaryPurple,
+                                unselectedContentColor = ArtGrayMuted
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        when (selectedSettingsTab) {
+                            0 -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(
+                                            "APPLICATION STYLE & THEME",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ArtPrimaryPurple,
+                                            letterSpacing = 1.sp
+                                        )
+
+                                        val themeOptions = listOf(
+                                            0 to Pair("Auto (System Default)", "Follows Android OS Dark / Light settings"),
+                                            1 to Pair("Deep Dark Mode", "Eye-friendly dark tones with high-contrast elements"),
+                                            2 to Pair("Soft Pastel (Light)", "Clean, modern pastel aesthetic"),
+                                            3 to Pair("Coral Sunset (Warm)", "Warm peach & coral sunset palette")
+                                        )
+
+                                        themeOptions.forEach { (themeKey, details) ->
+                                            val (name, subtitle) = details
+                                            val selected = currentTheme == themeKey
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(16.dp))
+                                                    .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(16.dp))
+                                                    .clickable { viewModel.selectedTheme.value = themeKey }
+                                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = selected,
+                                                    onClick = { viewModel.selectedTheme.value = themeKey },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(name, color = ArtTextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                                    Text(subtitle, color = ArtGrayMuted, fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(
+                                            "AUTO-SAVE SETTING",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ArtPrimaryPurple,
+                                            letterSpacing = 1.sp
+                                        )
+
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                                    Text(
+                                                        text = "Auto-save Itineraries",
+                                                        color = ArtTextDark,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Text(
+                                                        text = "Automatically archive generated trip plans.",
+                                                        color = ArtGrayMuted,
+                                                        fontSize = 11.sp,
+                                                        lineHeight = 14.sp
+                                                    )
+                                                }
+
+                                                Switch(
+                                                    checked = autoSaveVal,
+                                                    onCheckedChange = { viewModel.setAutoSaveEnabled(it) },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Color.White,
+                                                        checkedTrackColor = ArtPrimaryPurple,
+                                                        uncheckedThumbColor = ArtGrayMuted,
+                                                        uncheckedTrackColor = ArtCardBackground
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(
+                                            "DEFAULT TRAVEL ASSISTANT TONE",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ArtPrimaryPurple,
+                                            letterSpacing = 1.sp
+                                        )
+
+                                        val tones = listOf("Friendly & Helpful", "Professional Guide", "Funny & Witty", "Roast My Plan")
+                                        tones.forEach { tone ->
+                                            val selected = selectedPersonality.equals(tone, ignoreCase = true)
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(14.dp))
+                                                    .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(14.dp))
+                                                    .clickable { viewModel.selectedPersonality.value = tone }
+                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = selected,
+                                                    onClick = { viewModel.selectedPersonality.value = tone },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(tone, color = ArtTextDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            1 -> {
+                                var geminiInputKey by remember(userKeyVal) { mutableStateOf(userKeyVal) }
+                                var geminiStatusMsg by remember { mutableStateOf<String?>(null) }
+                                var showGuide by remember { mutableStateOf(false) }
+                                var showPassword by remember { mutableStateOf(false) }
+                                val context = LocalContext.current
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                                ) {
+                                    // SECTION 1: GEMINI AI MODEL SELECTOR (APPLIES TO DEFAULT & CUSTOM KEYS)
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.5.dp, ArtPrimaryPurple),
+                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(18.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.Tune, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("GEMINI AI MODEL", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = ArtSecondaryPurple
+                                                ) {
+                                                    Text(
+                                                        text = "ACTIVE: ${currentModel.replace("gemini-", "").replace("-preview", "").uppercase()}",
+                                                        color = ArtPrimaryPurple,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = "Select which AI model generates your itineraries. Works seamlessly with both the built-in default AI and custom API keys.",
+                                                fontSize = 12.sp,
+                                                color = ArtGrayMuted,
+                                                lineHeight = 16.sp
+                                            )
+
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                viewModel.availableGeminiModels.forEach { modelOption ->
+                                                    val isSelected = currentModel == modelOption.id
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .background(
+                                                                if (isSelected) ArtSecondaryPurple else Color.Transparent,
+                                                                RoundedCornerShape(14.dp)
+                                                            )
+                                                            .border(
+                                                                1.5.dp,
+                                                                if (isSelected) ArtPrimaryPurple else ArtBorderDark.copy(alpha = 0.3f),
+                                                                RoundedCornerShape(14.dp)
+                                                            )
+                                                            .clickable {
+                                                                viewModel.selectGeminiModel(modelOption.id)
+                                                            }
+                                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        RadioButton(
+                                                            selected = isSelected,
+                                                            onClick = { viewModel.selectGeminiModel(modelOption.id) },
+                                                            colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = modelOption.displayName,
+                                                                    color = ArtTextDark,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 13.sp
+                                                                )
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(6.dp),
+                                                                    color = if (modelOption.badge == "Recommended") Color(0xFFDCFCE7) else ArtSecondaryPurple
+                                                                ) {
+                                                                    Text(
+                                                                        text = modelOption.badge,
+                                                                        color = if (modelOption.badge == "Recommended") Color(0xFF166534) else ArtPrimaryPurple,
+                                                                        fontSize = 9.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            Text(
+                                                                text = modelOption.description,
+                                                                color = ArtGrayMuted,
+                                                                fontSize = 11.sp,
+                                                                lineHeight = 14.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Quick Live Test Connection Action
+                                            OutlinedButton(
+                                                onClick = { viewModel.testGeminiConnection() },
+                                                enabled = !isTesting,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(42.dp),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, ArtPrimaryPurple),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtPrimaryPurple)
+                                            ) {
+                                                if (isTesting) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        color = ArtPrimaryPurple,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Testing Connection...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                } else {
+                                                    Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Test Connection ($currentModel)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+
+                                            if (testStatus != null) {
+                                                val isSuccess = testStatus!!.startsWith("SUCCESS", ignoreCase = true)
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (isSuccess) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
+                                                    border = BorderStroke(1.dp, if (isSuccess) Color(0xFF86EFAC) else Color(0xFFFCA5A5)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(10.dp),
+                                                        verticalAlignment = Alignment.Top,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                                            contentDescription = null,
+                                                            tint = if (isSuccess) Color(0xFF166534) else Color(0xFFB91C1C),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            text = testStatus!!,
+                                                            fontSize = 11.sp,
+                                                            color = if (isSuccess) Color(0xFF166534) else Color(0xFFB91C1C),
+                                                            fontWeight = FontWeight.Medium,
+                                                            lineHeight = 15.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // SECTION 2: GEMINI API KEY (OPTIONAL CUSTOM KEY)
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, ArtBorderDark),
+                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(18.dp),
+                                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.Key, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("GEMINI API KEY", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (userKeyVal.isNotBlank()) Color(0xFFDCFCE7) else ArtSecondaryPurple
+                                                ) {
+                                                    Text(
+                                                        text = if (userKeyVal.isNotBlank()) "CUSTOM KEY CONNECTED" else "APP DEFAULT ACTIVE",
+                                                        color = if (userKeyVal.isNotBlank()) Color(0xFF166534) else ArtPrimaryPurple,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = if (userKeyVal.isNotBlank())
+                                                    "Your custom Gemini key is currently active and used for all itinerary requests with $currentModel."
+                                                else
+                                                    "TripPlanAI uses its built-in default Gemini service with $currentModel. You can also connect your own key below.",
+                                                fontSize = 12.sp,
+                                                color = ArtGrayMuted,
+                                                lineHeight = 16.sp
+                                            )
+
+                                            OutlinedTextField(
+                                                value = geminiInputKey,
+                                                onValueChange = {
+                                                    geminiInputKey = it
+                                                    geminiStatusMsg = null
+                                                },
+                                                label = { Text("Gemini API Key", fontSize = 12.sp) },
+                                                placeholder = { Text("AIzaSy...", fontSize = 12.sp) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                singleLine = true,
+                                                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                                trailingIcon = {
+                                                    IconButton(onClick = { showPassword = !showPassword }) {
+                                                        Icon(
+                                                            imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                            contentDescription = if (showPassword) "Hide Key" else "Show Key",
+                                                            tint = ArtGrayMuted,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = ArtPrimaryPurple,
+                                                    unfocusedBorderColor = ArtBorderDark.copy(alpha = 0.4f),
+                                                    focusedLabelColor = ArtPrimaryPurple
+                                                ),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        if (geminiInputKey.isBlank()) {
+                                                            geminiStatusMsg = "Key cannot be empty."
+                                                        } else {
+                                                            viewModel.validateAndSetUserApiKey(geminiInputKey.trim()) { success, err ->
+                                                                if (success) {
+                                                                    geminiStatusMsg = "Gemini key updated successfully!"
+                                                                } else {
+                                                                    geminiStatusMsg = err ?: "Failed to save key."
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
+                                                ) {
+                                                    Text("Save Key", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                }
+
+                                                if (userKeyVal.isNotBlank()) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            viewModel.disconnectUserApiKey()
+                                                            geminiInputKey = ""
+                                                            geminiStatusMsg = "Reverted to app default key."
+                                                        },
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                                                    ) {
+                                                        Text("Disconnect", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    }
+                                                }
+                                            }
+
+                                            if (geminiStatusMsg != null) {
+                                                Text(
+                                                    text = geminiStatusMsg!!,
+                                                    color = if (geminiStatusMsg!!.contains("successfully")) Color(0xFF166534) else Color(0xFFDC2626),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp
+                                                )
+                                            }
+
+                                            TextButton(
+                                                onClick = { showGuide = !showGuide },
+                                                modifier = Modifier.align(Alignment.Start)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("Don't have a Gemini API key? ", fontSize = 12.sp, color = ArtGrayMuted)
+                                                    Text(if (showGuide) "Hide guide" else "How to get one →", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple)
+                                                }
+                                            }
+
+                                            if (showGuide) {
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = ArtSecondaryPurple),
+                                                    border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(14.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Text("HOW TO GET A FREE GEMINI API KEY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple, letterSpacing = 0.5.sp)
+                                                        Text("1. Open Google AI Studio", fontSize = 12.sp, color = ArtTextDark)
+                                                        Text("2. Sign in with your Google account", fontSize = 12.sp, color = ArtTextDark)
+                                                        Text("3. Tap Get API key -> Create API key", fontSize = 12.sp, color = ArtTextDark)
+                                                        Text("4. Copy the key and paste it in the field above", fontSize = 12.sp, color = ArtTextDark)
+                                                        
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        
+                                                        Button(
+                                                            onClick = {
+                                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                                                                context.startActivity(intent)
+                                                            },
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
+                                                        ) {
+                                                            Icon(Icons.Default.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text("Open Google AI Studio", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // SECTION 3: TRIPASK INFO CARD
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, ArtBorderDark),
+                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(18.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.QuestionAnswer, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("TRIPASK", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFFDCFCE7)
+                                                ) {
+                                                    Text(
+                                                        text = "● ACTIVE & AVAILABLE",
+                                                        color = Color(0xFF166534),
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = "Powered by Llama 3.1 8B Instant via Groq.",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ArtTextDark
+                                            )
+
+                                            Text(
+                                                text = "Used strictly for fast contextual Q&A related to your active generated itinerary. Groq configuration is managed automatically by TripPlanAI.",
+                                                fontSize = 12.sp,
+                                                color = ArtGrayMuted,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                val context = LocalContext.current
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                    contentAlignment = Alignment.TopCenter
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .widthIn(max = 640.dp)
+                                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                                    ) {
+                                        // 1. DEVELOPER SECTION
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(24.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(20.dp),
+                                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Person,
+                                                        contentDescription = null,
+                                                        tint = ArtPrimaryPurple,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "DEVELOPER",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp,
+                                                        color = ArtPrimaryPurple,
+                                                        letterSpacing = 1.2.sp
+                                                    )
+                                                }
+
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .background(ArtSecondaryPurple, CircleShape)
+                                                            .border(1.5.dp, ArtPrimaryPurple.copy(alpha = 0.5f), CircleShape),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "IJ",
+                                                            fontWeight = FontWeight.Black,
+                                                            fontSize = 17.sp,
+                                                            color = ArtPrimaryPurple
+                                                        )
+                                                    }
+                                                    Column {
+                                                        Text(
+                                                            text = "Ishaan Jadhav",
+                                                            fontSize = 18.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ArtTextDark
+                                                        )
+                                                        Text(
+                                                            text = "Creator & Developer of TriplanAi",
+                                                            fontSize = 13.sp,
+                                                            color = ArtGrayMuted
+                                                        )
+                                                    }
+                                                }
+
+                                                // Responsive 2x2 Grid of compact social/contact buttons
+                                                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                                    val isNarrow = maxWidth < 340.dp
+
+                                                    val contacts = listOf(
+                                                        SocialContactItem(
+                                                            platform = "Instagram",
+                                                            handle = "@ishaanj_19",
+                                                            uri = "https://instagram.com/ishaanj_19",
+                                                            icon = Icons.Default.CameraAlt,
+                                                            accentColor = Color(0xFFE1306C),
+                                                            bgColor = Color(0xFFFCE7F3)
+                                                        ),
+                                                        SocialContactItem(
+                                                            platform = "GitHub",
+                                                            handle = "ishaanj2007",
+                                                            uri = "https://github.com/ishaanj2007",
+                                                            icon = Icons.Default.Code,
+                                                            accentColor = Color(0xFF333333),
+                                                            bgColor = ArtSecondaryPurple
+                                                        ),
+                                                        SocialContactItem(
+                                                            platform = "WhatsApp",
+                                                            handle = "@ishaan_jadhav",
+                                                            uri = "https://wa.me/ishaan_jadhav",
+                                                            icon = Icons.Default.Chat,
+                                                            accentColor = Color(0xFF16A34A),
+                                                            bgColor = Color(0xFFDCFCE7)
+                                                        ),
+                                                        SocialContactItem(
+                                                            platform = "Email",
+                                                            handle = "ishaanjadhav64@gmail.com",
+                                                            uri = "mailto:ishaanjadhav64@gmail.com",
+                                                            icon = Icons.Default.Email,
+                                                            accentColor = ArtPrimaryPurple,
+                                                            bgColor = Color(0xFFEDE9FE)
+                                                        )
+                                                    )
+
+                                                    if (isNarrow) {
+                                                        Column(
+                                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            contacts.forEach { contact ->
+                                                                DeveloperContactButton(
+                                                                    contact = contact,
+                                                                    onClick = {
+                                                                        try {
+                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contact.uri))
+                                                                            context.startActivity(intent)
+                                                                        } catch (e: Exception) {}
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Column(
+                                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            Row(
+                                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                DeveloperContactButton(
+                                                                    contact = contacts[0],
+                                                                    modifier = Modifier.weight(1f),
+                                                                    onClick = {
+                                                                        try {
+                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[0].uri))
+                                                                            context.startActivity(intent)
+                                                                        } catch (e: Exception) {}
+                                                                    }
+                                                                )
+                                                                DeveloperContactButton(
+                                                                    contact = contacts[1],
+                                                                    modifier = Modifier.weight(1f),
+                                                                    onClick = {
+                                                                        try {
+                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[1].uri))
+                                                                            context.startActivity(intent)
+                                                                        } catch (e: Exception) {}
+                                                                    }
+                                                                )
+                                                            }
+                                                            Row(
+                                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                DeveloperContactButton(
+                                                                    contact = contacts[2],
+                                                                    modifier = Modifier.weight(1f),
+                                                                    onClick = {
+                                                                        try {
+                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[2].uri))
+                                                                            context.startActivity(intent)
+                                                                        } catch (e: Exception) {}
+                                                                    }
+                                                                )
+                                                                DeveloperContactButton(
+                                                                    contact = contacts[3],
+                                                                    modifier = Modifier.weight(1f),
+                                                                    onClick = {
+                                                                        try {
+                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[3].uri))
+                                                                            context.startActivity(intent)
+                                                                        } catch (e: Exception) {}
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 2. ABOUT TRIPLANAI
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(24.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(20.dp),
+                                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Info,
+                                                        contentDescription = null,
+                                                        tint = ArtPrimaryPurple,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "ABOUT TRIPLANAI",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp,
+                                                        color = ArtPrimaryPurple,
+                                                        letterSpacing = 1.2.sp
+                                                    )
+                                                }
+
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column {
+                                                        Text(
+                                                            text = "TriplanAi",
+                                                            fontSize = 22.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ArtTextDark
+                                                        )
+                                                        Text(
+                                                            text = "Smart Travel Planner & Itinerary Architect",
+                                                            fontSize = 12.sp,
+                                                            color = ArtPrimaryPurple,
+                                                            fontWeight = FontWeight.SemiBold
+                                                        )
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = ArtSecondaryPurple,
+                                                        border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f))
+                                                    ) {
+                                                        Text(
+                                                            text = "Version 2.0.1",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ArtPrimaryPurple,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Text(
+                                                    text = "TriplanAi is an intelligent travel companion designed to transform wanderlust into well-crafted, realistic journeys. Whether you are venturing solo across historic European alleys, backpacking through Southeast Asia, or organizing a relaxing family retreat, TriplanAi structures every day with logistical precision, cultural insight, and personalized flair.",
+                                                    fontSize = 13.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 19.sp
+                                                )
+
+                                                Text(
+                                                    text = "By combining modern generative AI with smart geographic clustering and customizable travel vibes, TriplanAi eliminates hours of tedious itinerary drafting, research fatigue, and logistical guesswork.",
+                                                    fontSize = 13.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 19.sp
+                                                )
+
+                                                HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.4f))
+
+                                                // CORE CAPABILITIES
+                                                Text(
+                                                    text = "CORE CAPABILITIES",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ArtPrimaryPurple,
+                                                    letterSpacing = 1.sp
+                                                )
+
+                                                val appFeatures = listOf(
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.CalendarMonth,
+                                                        title = "Precision Day-by-Day Scheduling",
+                                                        description = "Structured morning, afternoon, and evening breakdowns with realistic pacing.",
+                                                        tint = ArtPrimaryPurple
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.AccountBalanceWallet,
+                                                        title = "Intelligent Budget Estimation",
+                                                        description = "Accurate expense breakdowns across lodging, dining, activities, and transit.",
+                                                        tint = Color(0xFF10B981)
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.Hotel,
+                                                        title = "Curated Stays & Lodging",
+                                                        description = "Vetted recommendations ranging from boutique stays to scenic resorts.",
+                                                        tint = Color(0xFF3B82F6)
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.Restaurant,
+                                                        title = "Authentic Dining & Food Hubs",
+                                                        description = "Highlights must-try regional delicacies and iconic local culinary markets.",
+                                                        tint = Color(0xFFF59E0B)
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.AltRoute,
+                                                        title = "Geographic Route Optimization",
+                                                        description = "Clusters nearby attractions to minimize transit time and transit fatigue.",
+                                                        tint = Color(0xFF8B5CF6)
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.AutoAwesome,
+                                                        title = "TripAsk Instant AI Companion",
+                                                        description = "Real-time context-aware answers for packing, weather, and local etiquette.",
+                                                        tint = ArtPrimaryPurple
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.Bookmark,
+                                                        title = "Offline Local Persistence",
+                                                        description = "Securely saved on-device itineraries accessible anytime, even offline.",
+                                                        tint = Color(0xFF0284C7)
+                                                    ),
+                                                    AppFeatureItem(
+                                                        icon = Icons.Default.Tune,
+                                                        title = "Customizable Assistant Tone",
+                                                        description = "Select your guide's personality from Friendly to Witty or Professional.",
+                                                        tint = Color(0xFFD97706)
+                                                    )
+                                                )
+
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    appFeatures.forEach { feature ->
+                                                        FeatureItemCard(feature = feature)
+                                                    }
+                                                }
+
+                                                HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.4f))
+
+                                                // HOW IT WORKS
+                                                Text(
+                                                    text = "HOW TRIPLANAI WORKS",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ArtPrimaryPurple,
+                                                    letterSpacing = 1.sp
+                                                )
+
+                                                val workflowSteps = listOf(
+                                                    Triple("1", "Set Destination & Duration", "Input any global city, region, or hidden gem along with your trip length."),
+                                                    Triple("2", "Customize Travel Style", "Specify your budget tier, travel companions, transportation mode, and preferred vibe."),
+                                                    Triple("3", "AI Generates Itinerary", "Our smart planning engine constructs an hour-by-hour roadmap with logistical cohesion."),
+                                                    Triple("4", "Explore, Ask & Save", "Interact with your itinerary, ask TripAsk questions, and save trips for offline access.")
+                                                )
+
+                                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    workflowSteps.forEach { (num, title, desc) ->
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .background(ArtSecondaryPurple.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+                                                                .border(1.dp, ArtBorderDark.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                                                .padding(12.dp),
+                                                            verticalAlignment = Alignment.Top,
+                                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(26.dp)
+                                                                    .background(ArtPrimaryPurple, CircleShape),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Text(
+                                                                    text = num,
+                                                                    color = Color.White,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 12.sp
+                                                                )
+                                                            }
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = title,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 13.sp,
+                                                                    color = ArtTextDark
+                                                                )
+                                                                Spacer(modifier = Modifier.height(2.dp))
+                                                                Text(
+                                                                    text = desc,
+                                                                    fontSize = 11.sp,
+                                                                    color = ArtGrayMuted,
+                                                                    lineHeight = 15.sp
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.4f))
+
+                                                // PRIVACY & LOCAL-FIRST
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color(0xFFF0FDF4), RoundedCornerShape(14.dp))
+                                                        .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(14.dp))
+                                                        .padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .background(Color(0xFFDCFCE7), CircleShape),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Shield,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFF166534),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = "Privacy & Local-First Storage",
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 12.sp,
+                                                            color = Color(0xFF166534)
+                                                        )
+                                                        Text(
+                                                            text = "Your saved trips, custom API keys, and preferences are stored locally on your device using Android Room. We do not track or sell your personal travel logs.",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF15803D),
+                                                            lineHeight = 15.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 3. BUILT WITH
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(24.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(20.dp),
+                                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Layers,
+                                                        contentDescription = null,
+                                                        tint = ArtPrimaryPurple,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "BUILT WITH",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp,
+                                                        color = ArtPrimaryPurple,
+                                                        letterSpacing = 1.2.sp
+                                                    )
+                                                }
+
+                                                val techStack = listOf(
+                                                    TechItem("Google Gemini", "Itinerary generation", Icons.Default.AutoAwesome, ArtPrimaryPurple),
+                                                    TechItem("Groq + Llama 3.1", "TripAsk", Icons.Default.Bolt, Color(0xFFF59E0B)),
+                                                    TechItem("Jetpack Compose", "Android UI", Icons.Default.Widgets, Color(0xFF10B981)),
+                                                    TechItem("Room", "Local storage", Icons.Default.Storage, Color(0xFF3B82F6))
+                                                )
+
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    techStack.forEach { tech ->
+                                                        TechStackRow(tech = tech)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 4. TRAVEL INFORMATION DISCLAIMER
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .background(Color(0xFFFEF3C7), CircleShape)
+                                                        .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f), CircleShape),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Info,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFD97706),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+
+                                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Text(
+                                                        text = "TRAVEL INFORMATION",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFB45309),
+                                                        letterSpacing = 0.8.sp
+                                                    )
+                                                    Text(
+                                                        text = "Prices, availability, routes, images, and recommendations generated by TriplanAi may change or be inaccurate. Always verify important travel information with official sources before travelling.",
+                                                        fontSize = 11.sp,
+                                                        color = Color(0xFF92400E),
+                                                        lineHeight = 16.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // 5. FOOTER
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp, bottom = 12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Text(
+                                                text = "TriplanAi",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = ArtTextDark
+                                            )
+                                            Text(
+                                                text = "Version 2.0.1",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = ArtPrimaryPurple
+                                            )
+                                            Text(
+                                                text = "Built with curiosity & code.",
+                                                fontSize = 11.sp,
+                                                color = ArtGrayMuted
+                                            )
+                                            Text(
+                                                text = "© 2026 Ishaan Jadhav",
+                                                fontSize = 10.sp,
+                                                color = ArtGrayMuted.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}
+
+// -------------------------------------------------------------------------
+// SUPPORT & ABOUT HELPER MODELS & COMPOSABLES
+// -------------------------------------------------------------------------
+
+private data class SocialContactItem(
+    val platform: String,
+    val handle: String,
+    val uri: String,
+    val icon: ImageVector,
+    val accentColor: Color,
+    val bgColor: Color
+)
+
+@Composable
+private fun DeveloperContactButton(
+    contact: SocialContactItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        color = ArtSecondaryPurple.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, ArtBorderDark)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(contact.bgColor, CircleShape)
+                    .border(1.dp, contact.accentColor.copy(alpha = 0.25f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = contact.icon,
+                    contentDescription = contact.platform,
+                    tint = contact.accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = contact.platform,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ArtGrayMuted
+                )
+                Text(
+                    text = contact.handle,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ArtTextDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.OpenInNew,
+                contentDescription = "Open",
+                tint = ArtPrimaryPurple.copy(alpha = 0.7f),
+                modifier = Modifier.size(15.dp)
+            )
+        }
+    }
+}
+
+private data class AppFeatureItem(
+    val icon: ImageVector,
+    val title: String,
+    val description: String,
+    val tint: Color? = null
+)
+
+@Composable
+private fun FeatureItemCard(
+    feature: AppFeatureItem,
+    modifier: Modifier = Modifier
+) {
+    val effectiveTint = feature.tint ?: ArtPrimaryPurple
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = ArtSecondaryPurple.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(effectiveTint.copy(alpha = 0.12f), CircleShape)
+                    .border(1.dp, effectiveTint.copy(alpha = 0.25f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = feature.icon,
+                    contentDescription = feature.title,
+                    tint = effectiveTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = feature.title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ArtTextDark
+                )
+                Spacer(modifier = Modifier.height(1.dp))
+                Text(
+                    text = feature.description,
+                    fontSize = 11.sp,
+                    color = ArtGrayMuted,
+                    lineHeight = 14.sp
+                )
+            }
+        }
+    }
+}
+
+private data class TechItem(
+    val name: String,
+    val purpose: String,
+    val icon: ImageVector,
+    val accentColor: Color
+)
+
+@Composable
+private fun TechStackRow(tech: TechItem) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ArtSecondaryPurple.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .border(1.dp, ArtBorderDark.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(1f, fill = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(tech.accentColor.copy(alpha = 0.12f), CircleShape)
+                    .border(1.dp, tech.accentColor.copy(alpha = 0.3f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = tech.icon,
+                    contentDescription = null,
+                    tint = tech.accentColor,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
+            Text(
+                text = tech.name,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = ArtTextDark
+            )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = ArtCardBackground,
+            border = BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.6f))
+        ) {
+            Text(
+                text = tech.purpose,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = ArtPrimaryPurple,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// HELPER COMPOSABLES & MODELS
+// -------------------------------------------------------------------------
+
+@Composable
+fun HeroTravelIllustration(
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = ArtPrimaryPurple
+    val lavenderColor = ArtSoftLavender
+    val secondaryColor = ArtSecondaryPurple
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // Sun
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFDE047), Color(0xFFF472B6)),
+                center = androidx.compose.ui.geometry.Offset(w * 0.72f, h * 0.35f),
+                radius = h * 0.45f
+            ),
+            center = androidx.compose.ui.geometry.Offset(w * 0.72f, h * 0.35f),
+            radius = w * 0.25f
+        )
+
+        // Distant mountains
+        val path1 = Path().apply {
+            moveTo(0f, h)
+            lineTo(w * 0.18f, h * 0.55f)
+            lineTo(w * 0.42f, h * 0.8f)
+            lineTo(w * 0.72f, h * 0.38f)
+            lineTo(w, h * 0.75f)
+            lineTo(w, h)
+            close()
+        }
+        drawPath(
+            path = path1,
+            color = lavenderColor.copy(alpha = 0.8f)
+        )
+
+        // Foreground mountains
+        val path2 = Path().apply {
+            moveTo(w * 0.12f, h)
+            lineTo(w * 0.45f, h * 0.35f)
+            lineTo(w * 0.68f, h * 0.65f)
+            lineTo(w * 0.88f, h * 0.45f)
+            lineTo(w, h * 0.58f)
+            lineTo(w, h)
+            close()
+        }
+        drawPath(
+            path = path2,
+            color = primaryColor.copy(alpha = 0.65f)
+        )
+
+        // Peak highlight
+        val pathPeak = Path().apply {
+            moveTo(w * 0.45f, h * 0.35f)
+            lineTo(w * 0.39f, h * 0.48f)
+            lineTo(w * 0.45f, h * 0.45f)
+            lineTo(w * 0.51f, h * 0.5f)
+            close()
+        }
+        drawPath(
+            path = pathPeak,
+            color = Color.White.copy(alpha = 0.65f)
+        )
+
+        // Dotted flight route line
+        val minDim = minOf(w, h)
+        val strokeWidth = (minDim * 0.04f).coerceIn(2f, 4f)
+        val stroke = Stroke(
+            width = strokeWidth,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(strokeWidth * 2.2f, strokeWidth * 2.2f), 0f)
+        )
+        val routePath = Path().apply {
+            moveTo(w * 0.25f, h * 0.85f)
+            quadraticTo(w * 0.6f, h * 0.68f, w * 0.84f, h * 0.32f)
+        }
+        drawPath(
+            path = routePath,
+            color = primaryColor,
+            style = stroke
+        )
+
+        // Pin head
+        val outerRadius = (minDim * 0.12f).coerceIn(6f, 13f)
+        val innerRadius = outerRadius * 0.42f
+        drawCircle(
+            color = primaryColor,
+            radius = outerRadius,
+            center = androidx.compose.ui.geometry.Offset(w * 0.84f, h * 0.32f)
+        )
+        drawCircle(
+            color = Color.White,
+            radius = innerRadius,
+            center = androidx.compose.ui.geometry.Offset(w * 0.84f, h * 0.32f)
+        )
+    }
+}
+
+@Composable
+fun FeaturePill(
+    icon: ImageVector,
+    label: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = ArtPrimaryPurple,
+            modifier = Modifier.size(13.dp)
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = ArtTextDark
+        )
+    }
+}
+
+@Composable
+fun TrendingDestinationCard(
+    dest: TrendingDest,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .width(170.dp)
+            .height(210.dp)
+            .shadow(
+                elevation = 4.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color.Black.copy(alpha = 0.06f)
+            )
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+        border = BorderStroke(1.dp, ArtBorderDark)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(105.dp)
+            ) {
+                AsyncImage(
+                    model = getDestinationImageUrl(dest.name),
+                    contentDescription = dest.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                Box(
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(32.dp)
+                        .background(dest.badgeBg, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = dest.icon,
+                        contentDescription = null,
+                        tint = ArtTextDark,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = dest.name,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ArtTextDark
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = dest.vibe,
+                        fontSize = 11.sp,
+                        color = ArtGrayMuted,
+                        lineHeight = 14.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(dest.btnBg, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Select ${dest.name}",
+                            tint = ArtTextDark,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SavedTripRowCard(
+    trip: TripEntity,
+    onView: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .shadow(
+                elevation = 3.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color.Black.copy(alpha = 0.05f)
+            )
+            .clickable(onClick = onView),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+        border = BorderStroke(1.dp, ArtBorderDark)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = getDestinationImageUrl(trip.destination),
+                    contentDescription = trip.destination,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = null,
+                            tint = ArtPrimaryPurple,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = trip.destination,
+                            color = ArtTextDark,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "${trip.durationDays} Days • ${trip.travelerGroup}",
+                        color = ArtGrayMuted,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = ArtSecondaryPurple
+                    ) {
+                        Text(
+                            text = "Style • ${trip.travelStyle}",
+                            color = ArtPrimaryPurple,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.15f))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Delete", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+
+                Button(
+                    onClick = onView,
+                    modifier = Modifier.weight(1.3f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple, contentColor = Color.White),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Text("View Trip", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "View",
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Bouncing button component
+@Composable
+fun BounceButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    containerColor: Color = MaterialTheme.colorScheme.primary,
+    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.5f),
+        label = "bounceScale"
+    )
+
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.scale(scale),
+        interactionSource = interactionSource,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+            disabledContainerColor = Color(0xFFE2E8F0),
+            disabledContentColor = Color(0xFF94A3B8)
+        ),
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(vertical = 16.dp),
+        content = content
+    )
+}
+
+fun getDestinationImageUrl(destinationName: String): String {
+    val name = destinationName.lowercase().trim()
+    return when {
+        name.contains("goa") -> "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=500&auto=format&fit=crop&q=80"
+        name.contains("japan") || name.contains("tokyo") -> "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=500&auto=format&fit=crop&q=80"
+        name.contains("manali") -> "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=500&auto=format&fit=crop&q=80"
+        name.contains("paris") || name.contains("france") -> "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=500&auto=format&fit=crop&q=80"
+        name.contains("ladakh") -> "https://images.unsplash.com/photo-1581793745862-99fde7fa73d2?w=500&auto=format&fit=crop&q=80"
+        name.contains("kerala") -> "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=500&auto=format&fit=crop&q=80"
+        name.contains("bali") -> "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=500&auto=format&fit=crop&q=80"
+        name.contains("singapore") -> "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=500&auto=format&fit=crop&q=80"
+        name.contains("thailand") || name.contains("bangkok") -> "https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=500&auto=format&fit=crop&q=80"
+        name.contains("rajasthan") || name.contains("jaipur") || name.contains("udaipur") -> "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=500&auto=format&fit=crop&q=80"
+        name.contains("dubai") -> "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=500&auto=format&fit=crop&q=80"
+        name.contains("maldives") -> "https://images.unsplash.com/photo-1514282401047-d79a71a590e8?w=500&auto=format&fit=crop&q=80"
+        name.contains("kashmir") -> "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?w=500&auto=format&fit=crop&q=80"
+        name.contains("agra") -> "https://images.unsplash.com/photo-1564507592333-c60657eea523?w=500&auto=format&fit=crop&q=80"
+        name.contains("narmadapuram") -> "https://images.unsplash.com/photo-1600100397608-f010e423b961?w=500&auto=format&fit=crop&q=80"
+        else -> "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=500&auto=format&fit=crop&q=80"
+    }
+}
+
+data class TrendingDest(
+    val name: String,
+    val vibe: String,
+    val icon: ImageVector,
+    val badgeBg: Color,
+    val btnBg: Color
+)

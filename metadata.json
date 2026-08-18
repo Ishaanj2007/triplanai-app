@@ -1,0 +1,6 @@
+{
+  "name": "TriPlanAi",
+  "description": "An AI-powered travel assistant that creates beautiful, optimized, personalized, and budget-friendly day-by-day itineraries instantly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
