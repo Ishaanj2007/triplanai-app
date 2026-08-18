@@ -1296,7 +1296,7 @@ fun HomeScreen(
                                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
                                                         Text("HOW TO GET A FREE GEMINI API KEY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple, letterSpacing = 0.5.sp)
-                                                        Text("1. Open Google AI Studio", fontSize = 12.sp, color = ArtTextDark)
+                                                        Text("1. Open the Google Gemini Developer Portal", fontSize = 12.sp, color = ArtTextDark)
                                                         Text("2. Sign in with your Google account", fontSize = 12.sp, color = ArtTextDark)
                                                         Text("3. Tap Get API key -> Create API key", fontSize = 12.sp, color = ArtTextDark)
                                                         Text("4. Copy the key and paste it in the field above", fontSize = 12.sp, color = ArtTextDark)
@@ -1313,7 +1313,7 @@ fun HomeScreen(
                                                         ) {
                                                             Icon(Icons.Default.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
                                                             Spacer(modifier = Modifier.width(6.dp))
-                                                            Text("Open Google AI Studio", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                            Text("Get Gemini API Key", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                                         }
                                                     }
                                                 }
