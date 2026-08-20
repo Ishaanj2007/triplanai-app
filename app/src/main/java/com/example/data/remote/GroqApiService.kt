@@ -15,9 +15,7 @@ data class GroqChatRequest(
     val messages: List<GroqMessage>,
     val model: String = "llama-3.1-8b-instant",
     val temperature: Float = 0.2f,
-    val max_completion_tokens: Int = 50,
-    val top_p: Float = 1.0f,
-    val stream: Boolean = false
+    val max_completion_tokens: Int = 60
 )
 
 @JsonClass(generateAdapter = true)
@@ -53,6 +51,9 @@ object GroqRetrofitClient {
         .build()
 
     private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(okhttp3.logging.HttpLoggingInterceptor().apply {
+            level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY
+        })
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)

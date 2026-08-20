@@ -29,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -762,6 +763,8 @@ fun HomeScreen(
         val selectedPersonality by viewModel.selectedPersonality.collectAsState()
         val testStatus by viewModel.testConnectionStatus.collectAsState()
         val isTesting by viewModel.isTestingConnection.collectAsState()
+        val groqTestStatus by viewModel.groqTestStatus.collectAsState()
+        val isTestingGroq by viewModel.isTestingGroq.collectAsState()
 
         var selectedSettingsTab by remember { mutableStateOf(1) }
 
@@ -812,8 +815,9 @@ fun HomeScreen(
                         )
                     }
 
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = selectedSettingsTab,
+                        edgePadding = 16.dp,
                         containerColor = Color.Transparent,
                         contentColor = ArtPrimaryPurple,
                         divider = {
@@ -828,7 +832,8 @@ fun HomeScreen(
                                     Text(
                                         text = title,
                                         fontWeight = if (selectedSettingsTab == index) FontWeight.Bold else FontWeight.Medium,
-                                        fontSize = 13.sp
+                                        fontSize = 13.sp,
+                                        maxLines = 1
                                     )
                                 },
                                 selectedContentColor = ArtPrimaryPurple,
@@ -844,554 +849,691 @@ fun HomeScreen(
                     ) {
                         when (selectedSettingsTab) {
                             0 -> {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(20.dp),
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    contentPadding = PaddingValues(
+                                        start = 20.dp,
+                                        top = 20.dp,
+                                        end = 20.dp,
+                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                    ),
                                     verticalArrangement = Arrangement.spacedBy(20.dp)
                                 ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Text(
-                                            "APPLICATION STYLE & THEME",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ArtPrimaryPurple,
-                                            letterSpacing = 1.sp
-                                        )
-
-                                        val themeOptions = listOf(
-                                            0 to Pair("Auto (System Default)", "Follows Android OS Dark / Light settings"),
-                                            1 to Pair("Deep Dark Mode", "Eye-friendly dark tones with high-contrast elements"),
-                                            2 to Pair("Soft Pastel (Light)", "Clean, modern pastel aesthetic"),
-                                            3 to Pair("Coral Sunset (Warm)", "Warm peach & coral sunset palette")
-                                        )
-
-                                        themeOptions.forEach { (themeKey, details) ->
-                                            val (name, subtitle) = details
-                                            val selected = currentTheme == themeKey
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(16.dp))
-                                                    .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(16.dp))
-                                                    .clickable { viewModel.selectedTheme.value = themeKey }
-                                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                RadioButton(
-                                                    selected = selected,
-                                                    onClick = { viewModel.selectedTheme.value = themeKey },
-                                                    colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
-                                                )
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(name, color = ArtTextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                                    Text(subtitle, color = ArtGrayMuted, fontSize = 11.sp)
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Text(
-                                            "AUTO-SAVE SETTING",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ArtPrimaryPurple,
-                                            letterSpacing = 1.sp
-                                        )
-
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(20.dp),
-                                            border = BorderStroke(1.dp, ArtBorderDark),
-                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth().padding(18.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                                                    Text(
-                                                        text = "Auto-save Itineraries",
-                                                        color = ArtTextDark,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 14.sp
-                                                    )
-                                                    Text(
-                                                        text = "Automatically archive generated trip plans.",
-                                                        color = ArtGrayMuted,
-                                                        fontSize = 11.sp,
-                                                        lineHeight = 14.sp
-                                                    )
-                                                }
+                                            Text(
+                                                "APPLICATION STYLE & THEME",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ArtPrimaryPurple,
+                                                letterSpacing = 1.sp
+                                            )
 
-                                                Switch(
-                                                    checked = autoSaveVal,
-                                                    onCheckedChange = { viewModel.setAutoSaveEnabled(it) },
-                                                    colors = SwitchDefaults.colors(
-                                                        checkedThumbColor = Color.White,
-                                                        checkedTrackColor = ArtPrimaryPurple,
-                                                        uncheckedThumbColor = ArtGrayMuted,
-                                                        uncheckedTrackColor = ArtCardBackground
+                                            val themeOptions = listOf(
+                                                0 to Pair("Auto (System Default)", "Follows Android OS Dark / Light settings"),
+                                                1 to Pair("Deep Dark Mode", "Eye-friendly dark tones with high-contrast elements"),
+                                                2 to Pair("Soft Pastel (Light)", "Clean, modern pastel aesthetic"),
+                                                3 to Pair("Coral Sunset (Warm)", "Warm peach & coral sunset palette")
+                                            )
+
+                                            themeOptions.forEach { (themeKey, details) ->
+                                                val (name, subtitle) = details
+                                                val selected = currentTheme == themeKey
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(16.dp))
+                                                        .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(16.dp))
+                                                        .clickable { viewModel.selectedTheme.value = themeKey }
+                                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                ) {
+                                                    RadioButton(
+                                                        selected = selected,
+                                                        onClick = { viewModel.selectedTheme.value = themeKey },
+                                                        colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
                                                     )
-                                                )
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(name, color = ArtTextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                                        Text(subtitle, color = ArtGrayMuted, fontSize = 11.sp)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
 
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Text(
-                                            "DEFAULT TRAVEL ASSISTANT TONE",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ArtPrimaryPurple,
-                                            letterSpacing = 1.sp
-                                        )
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(
+                                                "AUTO-SAVE SETTING",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ArtPrimaryPurple,
+                                                letterSpacing = 1.sp
+                                            )
 
-                                        val tones = listOf("Friendly & Helpful", "Professional Guide", "Funny & Witty", "Roast My Plan")
-                                        tones.forEach { tone ->
-                                            val selected = selectedPersonality.equals(tone, ignoreCase = true)
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(14.dp))
-                                                    .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(14.dp))
-                                                    .clickable { viewModel.selectedPersonality.value = tone }
-                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(20.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark),
+                                                colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
                                             ) {
-                                                RadioButton(
-                                                    selected = selected,
-                                                    onClick = { viewModel.selectedPersonality.value = tone },
-                                                    colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
-                                                )
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(tone, color = ArtTextDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                                        Text(
+                                                            text = "Auto-save Itineraries",
+                                                            color = ArtTextDark,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        Text(
+                                                            text = "Automatically archive generated trip plans.",
+                                                            color = ArtGrayMuted,
+                                                            fontSize = 11.sp,
+                                                            lineHeight = 14.sp
+                                                        )
+                                                    }
+
+                                                    Switch(
+                                                        checked = autoSaveVal,
+                                                        onCheckedChange = { viewModel.setAutoSaveEnabled(it) },
+                                                        colors = SwitchDefaults.colors(
+                                                            checkedThumbColor = Color.White,
+                                                            checkedTrackColor = ArtPrimaryPurple,
+                                                            uncheckedThumbColor = ArtGrayMuted,
+                                                            uncheckedTrackColor = ArtCardBackground
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    item {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(
+                                                "DEFAULT TRAVEL ASSISTANT TONE",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ArtPrimaryPurple,
+                                                letterSpacing = 1.sp
+                                            )
+
+                                            val tones = listOf("Friendly & Helpful", "Professional Guide", "Funny & Witty", "Roast My Plan")
+                                            tones.forEach { tone ->
+                                                val selected = selectedPersonality.equals(tone, ignoreCase = true)
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(14.dp))
+                                                        .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(14.dp))
+                                                        .clickable { viewModel.selectedPersonality.value = tone }
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = selected,
+                                                        onClick = { viewModel.selectedPersonality.value = tone },
+                                                        colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(tone, color = ArtTextDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                             1 -> {
-                                var geminiInputKey by remember(userKeyVal) { mutableStateOf(userKeyVal) }
-                                var geminiStatusMsg by remember { mutableStateOf<String?>(null) }
-                                var showGuide by remember { mutableStateOf(false) }
-                                var showPassword by remember { mutableStateOf(false) }
+                                var showGeminiSetupModal by remember { mutableStateOf(false) }
+                                var geminiSetupInitialStep by remember { mutableStateOf(0) }
+                                var showRemoveKeyConfirmDialog by remember { mutableStateOf(false) }
+                                var showGroqKeyDialog by remember { mutableStateOf(false) }
+                                var showRevealedGeminiKey by remember { mutableStateOf(false) }
                                 val context = LocalContext.current
 
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        top = 16.dp,
+                                        end = 16.dp,
+                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    // SECTION 1: GEMINI AI MODEL SELECTOR (APPLIES TO DEFAULT & CUSTOM KEYS)
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(20.dp),
-                                        border = BorderStroke(1.5.dp, ArtPrimaryPurple),
-                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(18.dp),
-                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    item {
+                                        // -------------------------------------------------------------
+                                        // SECTION 1: GEMINI CONNECTION & STATUS
+                                        // -------------------------------------------------------------
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            shape = RoundedCornerShape(20.dp),
+                                            border = BorderStroke(1.5.dp, if (userKeyVal.isNotBlank()) ArtPrimaryPurple else ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(14.dp)
                                             ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Tune, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("GEMINI AI MODEL", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
-                                                }
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = ArtSecondaryPurple
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = "ACTIVE: ${currentModel.replace("gemini-", "").replace("-preview", "").uppercase()}",
-                                                        color = ArtPrimaryPurple,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 10.sp,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = "Select which AI model generates your itineraries. Works seamlessly with both the built-in default AI and custom API keys.",
-                                                fontSize = 12.sp,
-                                                color = ArtGrayMuted,
-                                                lineHeight = 16.sp
-                                            )
-
-                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                viewModel.availableGeminiModels.forEach { modelOption ->
-                                                    val isSelected = currentModel == modelOption.id
                                                     Row(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .background(
-                                                                if (isSelected) ArtSecondaryPurple else Color.Transparent,
-                                                                RoundedCornerShape(14.dp)
-                                                            )
-                                                            .border(
-                                                                1.5.dp,
-                                                                if (isSelected) ArtPrimaryPurple else ArtBorderDark.copy(alpha = 0.3f),
-                                                                RoundedCornerShape(14.dp)
-                                                            )
-                                                            .clickable {
-                                                                viewModel.selectGeminiModel(modelOption.id)
-                                                            }
-                                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.weight(1f, fill = false)
                                                     ) {
-                                                        RadioButton(
-                                                            selected = isSelected,
-                                                            onClick = { viewModel.selectGeminiModel(modelOption.id) },
-                                                            colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .background(ArtSecondaryPurple, CircleShape)
+                                                                .border(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f), CircleShape),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Key,
+                                                                contentDescription = null,
+                                                                tint = ArtPrimaryPurple,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "GEMINI",
+                                                            fontWeight = FontWeight.Black,
+                                                            fontSize = 14.sp,
+                                                            color = ArtTextDark
                                                         )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Column(modifier = Modifier.weight(1f)) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = modelOption.displayName,
-                                                                    color = ArtTextDark,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    fontSize = 13.sp
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = when {
+                                                            isTesting -> ArtSecondaryPurple
+                                                            userKeyVal.isNotBlank() -> Color(0xFFDCFCE7)
+                                                            else -> Color(0xFFF3F4F6)
+                                                        },
+                                                        border = BorderStroke(
+                                                            1.dp,
+                                                            when {
+                                                                isTesting -> ArtPrimaryPurple
+                                                                userKeyVal.isNotBlank() -> Color(0xFF86EFAC)
+                                                                else -> Color(0xFFE5E7EB)
+                                                            }
+                                                        )
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            if (isTesting) {
+                                                                CircularProgressIndicator(
+                                                                    modifier = Modifier.size(10.dp),
+                                                                    strokeWidth = 1.5.dp,
+                                                                    color = ArtPrimaryPurple
                                                                 )
-                                                                Surface(
-                                                                    shape = RoundedCornerShape(6.dp),
-                                                                    color = if (modelOption.badge == "Recommended") Color(0xFFDCFCE7) else ArtSecondaryPurple
-                                                                ) {
-                                                                    Text(
-                                                                        text = modelOption.badge,
-                                                                        color = if (modelOption.badge == "Recommended") Color(0xFF166534) else ArtPrimaryPurple,
-                                                                        fontSize = 9.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                                    )
-                                                                }
                                                             }
                                                             Text(
-                                                                text = modelOption.description,
-                                                                color = ArtGrayMuted,
-                                                                fontSize = 11.sp,
-                                                                lineHeight = 14.sp
+                                                                text = when {
+                                                                    isTesting -> "Testing..."
+                                                                    userKeyVal.isNotBlank() -> "✓ Connected"
+                                                                    else -> "○ Not connected"
+                                                                },
+                                                                color = when {
+                                                                    isTesting -> ArtPrimaryPurple
+                                                                    userKeyVal.isNotBlank() -> Color(0xFF166534)
+                                                                    else -> ArtGrayMuted
+                                                                },
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 11.sp
                                                             )
                                                         }
                                                     }
                                                 }
-                                            }
 
-                                            // Quick Live Test Connection Action
-                                            OutlinedButton(
-                                                onClick = { viewModel.testGeminiConnection() },
-                                                enabled = !isTesting,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(42.dp),
-                                                shape = RoundedCornerShape(12.dp),
-                                                border = BorderStroke(1.dp, ArtPrimaryPurple),
-                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtPrimaryPurple)
-                                            ) {
-                                                if (isTesting) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.size(16.dp),
-                                                        color = ArtPrimaryPurple,
-                                                        strokeWidth = 2.dp
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("Testing Connection...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = "TripPlanAI uses Google Gemini to generate complete, personalized travel itineraries.",
+                                                    fontSize = 12.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 16.sp
+                                                )
+
+                                                if (userKeyVal.isNotBlank()) {
+                                                    val maskedKey = if (userKeyVal.length > 8) {
+                                                        "${userKeyVal.take(4)}••••••••••••${userKeyVal.takeLast(4)}"
+                                                    } else {
+                                                        "••••••••••••"
+                                                    }
+
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .background(ArtBackground, RoundedCornerShape(12.dp))
+                                                            .border(1.dp, ArtBorderDark.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text("SAVED ON THIS DEVICE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = ArtGrayMuted)
+                                                                Text(
+                                                                    text = if (showRevealedGeminiKey) userKeyVal else maskedKey,
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = ArtTextDark
+                                                                )
+                                                            }
+                                                            IconButton(
+                                                                onClick = { showRevealedGeminiKey = !showRevealedGeminiKey },
+                                                                modifier = Modifier.size(32.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = if (showRevealedGeminiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                                    contentDescription = if (showRevealedGeminiKey) "Hide key" else "Show key",
+                                                                    tint = ArtGrayMuted,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Button(
+                                                            onClick = {
+                                                                geminiSetupInitialStep = 4
+                                                                showGeminiSetupModal = true
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
+                                                        ) {
+                                                            Text("Change Key", fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                                                        }
+
+                                                        OutlinedButton(
+                                                            onClick = { viewModel.testGeminiConnection() },
+                                                            enabled = !isTesting,
+                                                            modifier = Modifier.weight(1f),
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            border = BorderStroke(1.dp, ArtPrimaryPurple),
+                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtPrimaryPurple)
+                                                        ) {
+                                                            if (isTesting) {
+                                                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = ArtPrimaryPurple)
+                                                            } else {
+                                                                Text("Test Connection", fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (testStatus != null) {
+                                                        val isSuccess = testStatus!!.startsWith("SUCCESS", ignoreCase = true)
+                                                        val isError = testStatus!!.startsWith("ERROR", ignoreCase = true)
+                                                        val displayMessage = testStatus!!.removePrefix("SUCCESS: ").removePrefix("ERROR: ")
+
+                                                        Surface(
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            color = if (isSuccess) Color(0xFFDCFCE7) else if (isError) Color(0xFFFEE2E2) else ArtSecondaryPurple,
+                                                            border = BorderStroke(1.dp, if (isSuccess) Color(0xFF86EFAC) else if (isError) Color(0xFFFCA5A5) else ArtPrimaryPurple),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(10.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = if (isSuccess) Icons.Default.CheckCircle else if (isError) Icons.Default.Warning else Icons.Default.Info,
+                                                                    contentDescription = null,
+                                                                    tint = if (isSuccess) Color(0xFF166534) else if (isError) Color(0xFFB91C1C) else ArtPrimaryPurple,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                                Text(
+                                                                    text = displayMessage,
+                                                                    fontSize = 11.sp,
+                                                                    color = if (isSuccess) Color(0xFF166534) else if (isError) Color(0xFFB91C1C) else ArtPrimaryPurple,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    lineHeight = 14.sp
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    TextButton(
+                                                        onClick = { showRemoveKeyConfirmDialog = true },
+                                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                                    ) {
+                                                        Text("Disconnect Key", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                    }
                                                 } else {
-                                                    Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("Test Connection ($currentModel)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    Button(
+                                                        onClick = {
+                                                            geminiSetupInitialStep = 0
+                                                            showGeminiSetupModal = true
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(46.dp),
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
+                                                    ) {
+                                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text("Connect Gemini", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    }
                                                 }
-                                            }
 
-                                            if (testStatus != null) {
-                                                val isSuccess = testStatus!!.startsWith("SUCCESS", ignoreCase = true)
-                                                Surface(
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    color = if (isSuccess) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
-                                                    border = BorderStroke(1.dp, if (isSuccess) Color(0xFF86EFAC) else Color(0xFFFCA5A5)),
+                                                HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.3f), thickness = 1.dp)
+
+                                                TextButton(
+                                                    onClick = {
+                                                        geminiSetupInitialStep = 1
+                                                        showGeminiSetupModal = true
+                                                    },
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
                                                     Row(
-                                                        modifier = Modifier.padding(10.dp),
-                                                        verticalAlignment = Alignment.Top,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Icon(
-                                                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                                            contentDescription = null,
-                                                            tint = if (isSuccess) Color(0xFF166534) else Color(0xFFB91C1C),
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                        Text(
-                                                            text = testStatus!!,
-                                                            fontSize = 11.sp,
-                                                            color = if (isSuccess) Color(0xFF166534) else Color(0xFFB91C1C),
-                                                            fontWeight = FontWeight.Medium,
-                                                            lineHeight = 15.sp
-                                                        )
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        ) {
+                                                            Icon(Icons.Default.HelpOutline, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(16.dp))
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Text("How do I get a Gemini API key?", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple)
+                                                        }
+                                                        Icon(Icons.Default.ArrowForward, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(16.dp))
                                                     }
                                                 }
                                             }
                                         }
                                     }
 
-                                    // SECTION 2: GEMINI API KEY (OPTIONAL CUSTOM KEY)
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(20.dp),
-                                        border = BorderStroke(1.dp, ArtBorderDark),
-                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(18.dp),
-                                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                                    item {
+                                        // -------------------------------------------------------------
+                                        // SECTION 2: GEMINI AI MODEL SELECTOR
+                                        // -------------------------------------------------------------
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            shape = RoundedCornerShape(20.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)
                                             ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Key, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("GEMINI API KEY", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
-                                                }
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = if (userKeyVal.isNotBlank()) Color(0xFFDCFCE7) else ArtSecondaryPurple
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = if (userKeyVal.isNotBlank()) "CUSTOM KEY CONNECTED" else "APP DEFAULT ACTIVE",
-                                                        color = if (userKeyVal.isNotBlank()) Color(0xFF166534) else ArtPrimaryPurple,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 10.sp,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
-                                                }
-                                            }
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .background(ArtSecondaryPurple, CircleShape)
+                                                                .border(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f), CircleShape),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(Icons.Default.Tune, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(16.dp))
+                                                        }
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text("GEMINI AI MODEL", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
+                                                    }
 
-                                            Text(
-                                                text = if (userKeyVal.isNotBlank())
-                                                    "Your custom Gemini key is currently active and used for all itinerary requests with $currentModel."
-                                                else
-                                                    "TripPlanAI uses its built-in default Gemini service with $currentModel. You can also connect your own key below.",
-                                                fontSize = 12.sp,
-                                                color = ArtGrayMuted,
-                                                lineHeight = 16.sp
-                                            )
-
-                                            OutlinedTextField(
-                                                value = geminiInputKey,
-                                                onValueChange = {
-                                                    geminiInputKey = it
-                                                    geminiStatusMsg = null
-                                                },
-                                                label = { Text("Gemini API Key", fontSize = 12.sp) },
-                                                placeholder = { Text("AIzaSy...", fontSize = 12.sp) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                singleLine = true,
-                                                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                                trailingIcon = {
-                                                    IconButton(onClick = { showPassword = !showPassword }) {
-                                                        Icon(
-                                                            imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                            contentDescription = if (showPassword) "Hide Key" else "Show Key",
-                                                            tint = ArtGrayMuted,
-                                                            modifier = Modifier.size(20.dp)
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = ArtSecondaryPurple
+                                                    ) {
+                                                        Text(
+                                                            text = currentModel.replace("gemini-", "").replace("-preview", "").uppercase(),
+                                                            color = ArtPrimaryPurple,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 10.sp,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                         )
                                                     }
-                                                },
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedBorderColor = ArtPrimaryPurple,
-                                                    unfocusedBorderColor = ArtBorderDark.copy(alpha = 0.4f),
-                                                    focusedLabelColor = ArtPrimaryPurple
-                                                ),
-                                                shape = RoundedCornerShape(12.dp)
-                                            )
+                                                }
 
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Button(
-                                                    onClick = {
-                                                        if (geminiInputKey.isBlank()) {
-                                                            geminiStatusMsg = "Key cannot be empty."
-                                                        } else {
-                                                            viewModel.validateAndSetUserApiKey(geminiInputKey.trim()) { success, err ->
-                                                                if (success) {
-                                                                    geminiStatusMsg = "Gemini key updated successfully!"
-                                                                } else {
-                                                                    geminiStatusMsg = err ?: "Failed to save key."
+                                                Text(
+                                                    text = "Choose the Gemini model for your travel plans.",
+                                                    fontSize = 12.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 16.sp
+                                                )
+
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    val isKeyConnected = userKeyVal.isNotBlank()
+                                                    
+                                                    viewModel.availableGeminiModels.forEach { modelOption ->
+                                                        val isSelected = currentModel == modelOption.id
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .alpha(if (isKeyConnected) 1f else 0.5f)
+                                                                .background(
+                                                                    if (isSelected) ArtSecondaryPurple else Color.Transparent,
+                                                                    RoundedCornerShape(14.dp)
+                                                                )
+                                                                .border(
+                                                                    1.5.dp,
+                                                                    if (isSelected) ArtPrimaryPurple else ArtBorderDark.copy(alpha = 0.3f),
+                                                                    RoundedCornerShape(14.dp)
+                                                                )
+                                                                .clickable(enabled = isKeyConnected) {
+                                                                    viewModel.selectGeminiModel(modelOption.id)
                                                                 }
+                                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            RadioButton(
+                                                                selected = isSelected,
+                                                                onClick = { viewModel.selectGeminiModel(modelOption.id) },
+                                                                colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = modelOption.displayName,
+                                                                        color = ArtTextDark,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 12.sp
+                                                                    )
+                                                                    Surface(
+                                                                        shape = RoundedCornerShape(6.dp),
+                                                                        color = if (modelOption.badge == "Recommended") Color(0xFFDCFCE7) else ArtSecondaryPurple
+                                                                    ) {
+                                                                        Text(
+                                                                            text = modelOption.badge,
+                                                                            color = if (modelOption.badge == "Recommended") Color(0xFF166534) else ArtPrimaryPurple,
+                                                                            fontSize = 9.sp,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                        )
+                                                                    }
+                                                                }
+                                                                Text(
+                                                                    text = modelOption.description,
+                                                                    color = ArtGrayMuted,
+                                                                    fontSize = 11.sp,
+                                                                    lineHeight = 14.sp
+                                                                )
                                                             }
                                                         }
-                                                    },
-                                                    modifier = Modifier.weight(1f),
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
-                                                ) {
-                                                    Text("Save Key", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                }
-
-                                                if (userKeyVal.isNotBlank()) {
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            viewModel.disconnectUserApiKey()
-                                                            geminiInputKey = ""
-                                                            geminiStatusMsg = "Reverted to app default key."
-                                                        },
-                                                        shape = RoundedCornerShape(12.dp),
-                                                        border = BorderStroke(1.dp, Color(0xFFFCA5A5))
-                                                    ) {
-                                                        Text("Disconnect", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                    }
-                                                }
-                                            }
-
-                                            if (geminiStatusMsg != null) {
-                                                Text(
-                                                    text = geminiStatusMsg!!,
-                                                    color = if (geminiStatusMsg!!.contains("successfully")) Color(0xFF166534) else Color(0xFFDC2626),
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-
-                                            TextButton(
-                                                onClick = { showGuide = !showGuide },
-                                                modifier = Modifier.align(Alignment.Start)
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text("Don't have a Gemini API key? ", fontSize = 12.sp, color = ArtGrayMuted)
-                                                    Text(if (showGuide) "Hide guide" else "How to get one →", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple)
-                                                }
-                                            }
-
-                                            if (showGuide) {
-                                                Card(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    shape = RoundedCornerShape(14.dp),
-                                                    colors = CardDefaults.cardColors(containerColor = ArtSecondaryPurple),
-                                                    border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f))
-                                                ) {
-                                                    Column(
-                                                        modifier = Modifier.padding(14.dp),
-                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        Text("HOW TO GET A FREE GEMINI API KEY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ArtPrimaryPurple, letterSpacing = 0.5.sp)
-                                                        Text("1. Open the Google Gemini Developer Portal", fontSize = 12.sp, color = ArtTextDark)
-                                                        Text("2. Sign in with your Google account", fontSize = 12.sp, color = ArtTextDark)
-                                                        Text("3. Tap Get API key -> Create API key", fontSize = 12.sp, color = ArtTextDark)
-                                                        Text("4. Copy the key and paste it in the field above", fontSize = 12.sp, color = ArtTextDark)
-                                                        
-                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                        
-                                                        Button(
-                                                            onClick = {
-                                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
-                                                                context.startActivity(intent)
-                                                            },
-                                                            shape = RoundedCornerShape(10.dp),
-                                                            colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple)
-                                                        ) {
-                                                            Icon(Icons.Default.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
-                                                            Spacer(modifier = Modifier.width(6.dp))
-                                                            Text("Get Gemini API Key", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                }
 
-                                    // SECTION 3: TRIPASK INFO CARD
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
+                                if (showGeminiSetupModal) {
+                                    GeminiSetupDialog(
+                                        viewModel = viewModel,
+                                        initialStep = geminiSetupInitialStep,
+                                        onDismiss = { showGeminiSetupModal = false },
+                                        onConnectedSuccess = {
+                                            showGeminiSetupModal = false
+                                        }
+                                    )
+                                }
+
+                                if (showRemoveKeyConfirmDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { showRemoveKeyConfirmDialog = false },
                                         shape = RoundedCornerShape(20.dp),
-                                        border = BorderStroke(1.dp, ArtBorderDark),
-                                        colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(18.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.QuestionAnswer, contentDescription = null, tint = ArtPrimaryPurple, modifier = Modifier.size(20.dp))
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("TRIPASK", fontWeight = FontWeight.Black, fontSize = 13.sp, color = ArtTextDark)
-                                                }
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = Color(0xFFDCFCE7)
-                                                ) {
-                                                    Text(
-                                                        text = "● ACTIVE & AVAILABLE",
-                                                        color = Color(0xFF166534),
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 10.sp,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
-                                                }
-                                            }
-
+                                        containerColor = ArtCardBackground,
+                                        title = {
                                             Text(
-                                                text = "Powered by Llama 3.1 8B Instant via Groq.",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                "Disconnect Gemini API Key?",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 18.sp,
                                                 color = ArtTextDark
                                             )
-
+                                        },
+                                        text = {
                                             Text(
-                                                text = "Used strictly for fast contextual Q&A related to your active generated itinerary. Groq configuration is managed automatically by TripPlanAI.",
-                                                fontSize = 12.sp,
+                                                "You will need to connect a Gemini API key again before generating itineraries. Your saved trips will remain intact.",
+                                                fontSize = 13.sp,
                                                 color = ArtGrayMuted,
-                                                lineHeight = 16.sp
+                                                lineHeight = 18.sp
                                             )
+                                        },
+                                        confirmButton = {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.disconnectUserApiKey()
+                                                    showRemoveKeyConfirmDialog = false
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Text("Disconnect", fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        },
+                                        dismissButton = {
+                                            OutlinedButton(
+                                                onClick = { showRemoveKeyConfirmDialog = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark)
+                                            ) {
+                                                Text("Cancel", fontWeight = FontWeight.Bold, color = ArtTextDark)
+                                            }
                                         }
-                                    }
+                                    )
+                                }
+
+                                if (showGroqKeyDialog) {
+                                    var enteredGroqKey by remember { mutableStateOf(groqKeyVal) }
+                                    AlertDialog(
+                                        onDismissRequest = { showGroqKeyDialog = false },
+                                        shape = RoundedCornerShape(20.dp),
+                                        containerColor = ArtCardBackground,
+                                        title = {
+                                            Text(
+                                                "TripAsk (Groq) API Key",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 18.sp,
+                                                color = ArtTextDark
+                                            )
+                                        },
+                                        text = {
+                                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Text(
+                                                    "Enter your personal Groq API key (starts with gsk_) to power TripAsk questions.",
+                                                    fontSize = 12.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 16.sp
+                                                )
+                                                OutlinedTextField(
+                                                    value = enteredGroqKey,
+                                                    onValueChange = { enteredGroqKey = it },
+                                                    placeholder = { Text("gsk_...", fontSize = 12.sp, color = ArtGrayMuted) },
+                                                    singleLine = true,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        },
+                                        confirmButton = {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.saveGroqApiKey(enteredGroqKey.trim())
+                                                    showGroqKeyDialog = false
+                                                    viewModel.testGroqConnection()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Text("Save & Test", fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        },
+                                        dismissButton = {
+                                            OutlinedButton(
+                                                onClick = { showGroqKeyDialog = false },
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark)
+                                            ) {
+                                                Text("Cancel", fontWeight = FontWeight.Bold, color = ArtTextDark)
+                                            }
+                                        }
+                                    )
                                 }
                             }
                             else -> {
                                 val context = LocalContext.current
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState()),
-                                    contentAlignment = Alignment.TopCenter
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    contentPadding = PaddingValues(
+                                        start = 20.dp,
+                                        top = 20.dp,
+                                        end = 20.dp,
+                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(18.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .widthIn(max = 640.dp)
-                                            .padding(horizontal = 20.dp, vertical = 20.dp),
-                                        verticalArrangement = Arrangement.spacedBy(18.dp)
-                                    ) {
+                                    item {
                                         // 1. DEVELOPER SECTION
                                         Card(
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(24.dp),
                                             border = BorderStroke(1.dp, ArtBorderDark),
                                             colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
@@ -1568,10 +1710,12 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
+                                    }
 
+                                    item {
                                         // 2. ABOUT TRIPLANAI
                                         Card(
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(24.dp),
                                             border = BorderStroke(1.dp, ArtBorderDark),
                                             colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
@@ -1818,10 +1962,12 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
+                                    }
 
+                                    item {
                                         // 3. BUILT WITH
                                         Card(
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(24.dp),
                                             border = BorderStroke(1.dp, ArtBorderDark),
                                             colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
@@ -1863,10 +2009,12 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
+                                    }
 
+                                    item {
                                         // 4. TRAVEL INFORMATION DISCLAIMER
                                         Card(
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(20.dp),
                                             border = BorderStroke(1.dp, Color(0xFFFDE68A)),
                                             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB))
@@ -1908,11 +2056,14 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
+                                    }
 
+                                    item {
                                         // 5. FOOTER
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .widthIn(max = 680.dp)
                                                 .padding(top = 4.dp, bottom = 12.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             verticalArrangement = Arrangement.spacedBy(3.dp)

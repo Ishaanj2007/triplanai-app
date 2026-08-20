@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,9 +53,12 @@ fun QuestionsScreen(
     val travelerGroup by viewModel.travelerGroup.collectAsState()
     val totalBudget by viewModel.totalBudget.collectAsState()
     val preferredTransportation by viewModel.preferredTransportation.collectAsState()
-    val travelStyle by viewModel.travelStyle.collectAsState()
+    val selectedTravelStyles by viewModel.selectedTravelStyles.collectAsState()
     val travelPace by viewModel.travelPace.collectAsState()
-    val specialRequirements by viewModel.specialRequirements.collectAsState()
+    val selectedSpecialRequirements by viewModel.selectedSpecialRequirements.collectAsState()
+    val userApiKey by viewModel.userApiKey.collectAsState()
+
+    var showGeminiSetupDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -413,8 +417,8 @@ fun QuestionsScreen(
                         MiniCalendar(
                             startDate = startDate,
                             endDate = endDate,
-                            onDateRangeSelected = { start, end ->
-                                viewModel.updateDateRange(start, end)
+                            onDateSelected = { start ->
+                                viewModel.updateStartDate(start)
                             }
                         )
                     }
@@ -706,7 +710,7 @@ fun QuestionsScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             styles.forEach { styleName ->
-                                val selected = travelStyle == styleName
+                                val selected = selectedTravelStyles.contains(styleName)
                                 Box(
                                     modifier = Modifier
                                         .background(
@@ -718,7 +722,7 @@ fun QuestionsScreen(
                                             ArtBorderDark,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .clickable { viewModel.travelStyle.value = styleName }
+                                        .clickable { viewModel.toggleTravelStyle(styleName) }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
@@ -789,7 +793,7 @@ fun QuestionsScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             requirements.forEach { opt ->
-                                val selected = specialRequirements == opt
+                                val selected = selectedSpecialRequirements.contains(opt)
                                 Box(
                                     modifier = Modifier
                                         .background(
@@ -801,7 +805,7 @@ fun QuestionsScreen(
                                             ArtBorderDark,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .clickable { viewModel.specialRequirements.value = opt }
+                                        .clickable { viewModel.toggleSpecialRequirement(opt) }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
@@ -949,7 +953,8 @@ fun QuestionsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showModelPicker = true },
+                            .alpha(if (userApiKey.isNotBlank()) 1f else 0.5f)
+                            .clickable(enabled = userApiKey.isNotBlank()) { showModelPicker = true },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -985,17 +990,25 @@ fun QuestionsScreen(
                         }
                     }
 
-                    BounceButton(
+                    Button(
                         onClick = {
-                            viewModel.startTripGeneration()
-                            onNavigateToItinerary()
+                            if (userApiKey.isBlank()) {
+                                showGeminiSetupDialog = true
+                            } else {
+                                viewModel.startTripGeneration()
+                                onNavigateToItinerary()
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(54.dp)
                             .border(2.dp, ArtBorderDark, RoundedCornerShape(14.dp))
                             .testTag("generate_button"),
-                        containerColor = ArtPrimaryPurple,
-                        contentColor = Color.White
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ArtPrimaryPurple,
+                            contentColor = Color.White
+                        )
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1020,6 +1033,19 @@ fun QuestionsScreen(
                     }
                 }
             }
+        }
+
+        if (showGeminiSetupDialog) {
+            GeminiSetupDialog(
+                viewModel = viewModel,
+                initialStep = 0,
+                onDismiss = { showGeminiSetupDialog = false },
+                onConnectedSuccess = {
+                    showGeminiSetupDialog = false
+                    viewModel.startTripGeneration()
+                    onNavigateToItinerary()
+                }
+            )
         }
     }
 }
@@ -1111,11 +1137,11 @@ fun FlowRow(
 fun MiniCalendar(
     startDate: LocalDate,
     endDate: LocalDate,
-    onDateRangeSelected: (LocalDate, LocalDate?) -> Unit,
+    onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.from(startDate)) }
-    val context = LocalContext.current
+    val today = remember { LocalDate.now() }
 
     Column(
         modifier = modifier
@@ -1216,23 +1242,27 @@ fun MiniCalendar(
 
                         if (dayNum in 1..daysInMonth) {
                             val date = currentMonth.atDay(dayNum)
+                            val isPast = date.isBefore(today)
                             val isStart = date == startDate
                             val isEnd = date == endDate
                             val inRange = date.isAfter(startDate) && date.isBefore(endDate)
 
                             val bg = when {
+                                isPast -> Color.Transparent
                                 isStart || isEnd -> ArtPrimaryPurple
                                 inRange -> ArtSoftLavender
                                 else -> Color.Transparent
                             }
 
                             val border = when {
+                                isPast -> BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.08f))
                                 isStart || isEnd -> BorderStroke(2.dp, ArtBorderDark)
                                 inRange -> BorderStroke(1.5.dp, ArtBorderDark.copy(alpha = 0.5f))
                                 else -> BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.15f))
                             }
 
                             val txtColor = when {
+                                isPast -> ArtGrayMuted.copy(alpha = 0.35f)
                                 isStart || isEnd -> Color.White
                                 inRange -> ArtTextDark
                                 else -> ArtTextDark
@@ -1244,27 +1274,13 @@ fun MiniCalendar(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(bg)
                                     .border(border.width, border.brush, RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        if (endDate != startDate && date == startDate) {
-                                            // Clicked start date when range exists -> clear to single day
-                                            onDateRangeSelected(date, null)
-                                        } else if (date.isBefore(startDate)) {
-                                            // Clicked before start -> set as new start
-                                            onDateRangeSelected(date, null)
-                                        } else if (date == startDate) {
-                                            // clicked start date, keep as is
+                                    .then(
+                                        if (!isPast) {
+                                            Modifier.clickable { onDateSelected(date) }
                                         } else {
-                                            // Clicked after start
-                                            val daysCount = ChronoUnit.DAYS.between(startDate, date).toInt() + 1
-                                            if (daysCount > 14) {
-                                                Toast.makeText(context, "Maximum travel duration is 14 days!", Toast.LENGTH_SHORT).show()
-                                                val maxEnd = startDate.plusDays(13)
-                                                onDateRangeSelected(startDate, maxEnd)
-                                            } else {
-                                                onDateRangeSelected(startDate, date)
-                                            }
+                                            Modifier
                                         }
-                                    },
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

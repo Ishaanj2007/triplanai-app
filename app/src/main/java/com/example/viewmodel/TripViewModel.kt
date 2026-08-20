@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.TripEntity
 import com.example.data.model.TripPlan
+import com.example.data.remote.GroqChatRequest
+import com.example.data.remote.GroqMessage
+import com.example.data.remote.GroqRetrofitClient
 import com.example.data.remote.RetrofitClient
 import com.example.repository.TripRepository
 import com.example.BuildConfig
@@ -25,11 +28,18 @@ data class GeminiModelOption(
     val badge: String
 )
 
+enum class ErrorKind {
+    RATE_LIMIT,
+    INVALID_KEY,
+    NETWORK,
+    GENERAL
+}
+
 sealed interface PlanningState {
     object Idle : PlanningState
     object Planning : PlanningState
     data class Success(val plan: TripPlan) : PlanningState
-    data class Error(val message: String) : PlanningState
+    data class Error(val message: String, val errorKind: ErrorKind = ErrorKind.GENERAL) : PlanningState
 }
 
 class TripViewModel(application: Application) : AndroidViewModel(application) {
@@ -72,7 +82,9 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     // User connected key, model, and preferences
     val userApiKey = MutableStateFlow(sharedPrefs.getString("user_api_key", "") ?: "")
-    val groqApiKey = MutableStateFlow(sharedPrefs.getString("groq_api_key", "") ?: "")
+    val groqApiKey = MutableStateFlow(
+        if (BuildConfig.GROQ_API_KEY != "MY_GROQ_API_KEY") BuildConfig.GROQ_API_KEY else ""
+    )
     val autoSaveEnabled = MutableStateFlow(sharedPrefs.getBoolean("auto_save_enabled", false))
     val selectedTheme = MutableStateFlow(sharedPrefs.getInt("selected_theme", 0))
     val selectedPersonality = MutableStateFlow(sharedPrefs.getString("selected_personality", "Friendly") ?: "Friendly")
@@ -114,19 +126,22 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     val testConnectionStatus = MutableStateFlow<String?>(null)
     val isTestingConnection = MutableStateFlow(false)
 
+    val groqTestStatus = MutableStateFlow<String?>(null)
+    val isTestingGroq = MutableStateFlow(false)
+
     fun testGeminiConnection() {
         viewModelScope.launch {
             isTestingConnection.value = true
             testConnectionStatus.value = "Testing Gemini connection..."
             try {
-                val key = if (userApiKey.value.isNotBlank()) userApiKey.value else BuildConfig.GEMINI_API_KEY
-                if (key.isBlank() || key == "MY_GEMINI_API_KEY") {
-                    testConnectionStatus.value = "AI service is unconfigured. Please connect a custom Gemini API key in the field below."
+                val key = userApiKey.value.trim()
+                if (key.isBlank()) {
+                    testConnectionStatus.value = "No Gemini API key connected."
                     isTestingConnection.value = false
                     return@launch
                 }
                 
-                val testPrompt = "Ping. Respond in 2 words: Connected successfully."
+                val testPrompt = "Ping. Respond with two words: Connection verified."
                 val request = com.example.data.remote.GenerateContentRequest(
                     contents = listOf(
                         com.example.data.remote.Content(
@@ -142,29 +157,86 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 val response = RetrofitClient.service.generateContent(selectedModel.value, key, request)
                 val reply = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
                 if (!reply.isNullOrBlank()) {
-                    testConnectionStatus.value = "SUCCESS: Model ${selectedModel.value} connected and active."
+                    testConnectionStatus.value = "SUCCESS: Gemini connected successfully."
                 } else {
-                    testConnectionStatus.value = "Connected to service, but received an empty response. Model: ${selectedModel.value}"
+                    testConnectionStatus.value = "SUCCESS: Gemini connected."
                 }
             } catch (e: retrofit2.HttpException) {
                 val code = e.code()
-                val currentM = selectedModel.value
                 val reason = when (code) {
-                    400 -> "Invalid request parameter for $currentM."
-                    401 -> "Invalid or expired API key."
-                    403 -> "Access restricted for this API key or model."
-                    404 -> "Model $currentM is not available on this endpoint."
-                    429 -> "Rate limit reached for $currentM. Try switching to Gemini 2.5 Flash."
-                    500, 502, 503, 504 -> "Service is temporarily overloaded. Please retry in a few moments."
-                    else -> "Connection returned HTTP code $code."
+                    400, 401, 403 -> "API key is invalid or unauthorized."
+                    429 -> "Gemini usage limit reached for this key."
+                    500, 502, 503, 504 -> "Gemini service temporarily busy. Please retry shortly."
+                    else -> "Connection test failed (HTTP $code)."
                 }
-                testConnectionStatus.value = "Connection issue: $reason"
+                testConnectionStatus.value = "ERROR: $reason"
             } catch (e: java.io.IOException) {
-                testConnectionStatus.value = "Network error: Unable to reach travel planning service. Please check your internet connection."
+                testConnectionStatus.value = "ERROR: Network offline. Please check connection."
             } catch (e: Exception) {
-                testConnectionStatus.value = "Connection test could not be completed. Please check your network."
+                testConnectionStatus.value = "ERROR: Could not verify connection."
             } finally {
                 isTestingConnection.value = false
+            }
+        }
+    }
+
+    fun testGroqConnection() {
+        viewModelScope.launch {
+            isTestingGroq.value = true
+            groqTestStatus.value = "Testing Groq connection..."
+            val key = if (groqApiKey.value.isNotBlank()) groqApiKey.value.trim() else BuildConfig.GROQ_API_KEY
+            if (key.isBlank() || key == "MY_GROQ_API_KEY") {
+                groqTestStatus.value = "NOT_CONFIGURED: No Groq API key set."
+                isTestingGroq.value = false
+                return@launch
+            }
+
+            try {
+                android.util.Log.d("TripAsk", "[GroqTest] Starting connection test with key: ${if (key.length > 10) key.take(6) + "..." + key.takeLast(4) else "SHORT_KEY"}")
+                val request = GroqChatRequest(
+                    messages = listOf(
+                        GroqMessage(role = "system", content = "You are a healthcheck bot."),
+                        GroqMessage(role = "user", content = "ping")
+                    ),
+                    model = "llama-3.1-8b-instant",
+                    temperature = 0.1f,
+                    max_completion_tokens = 10
+                )
+                val response = GroqRetrofitClient.service.getChatCompletion(
+                    authorization = "Bearer $key",
+                    request = request
+                )
+                val reply = response.choices?.firstOrNull()?.message?.content?.trim()
+                android.util.Log.d("TripAsk", "[GroqTest] Response received: $reply")
+                
+                if (!reply.isNullOrBlank()) {
+                    groqTestStatus.value = "SUCCESS: Groq & Llama 3.1 8B connected."
+                } else {
+                    android.util.Log.w("TripAsk", "[GroqTest] Received empty reply.")
+                    groqTestStatus.value = "SUCCESS: Groq connection active."
+                }
+            } catch (e: retrofit2.HttpException) {
+                val code = e.code()
+                val errorBody = e.response()?.errorBody()?.string() ?: "NO_BODY"
+                android.util.Log.e("TripAsk", "[GroqTest] HTTP Error $code: $errorBody")
+                
+                val reason = when (code) {
+                    401 -> "Invalid Groq API key credentials."
+                    403 -> "Groq access denied. Key lacks permissions for llama-3.1-8b-instant."
+                    429 -> "Groq rate limit reached. Please retry in a moment."
+                    500, 502, 503, 504 -> "Groq service is temporarily busy."
+                    else -> "Groq connection failed (HTTP $code)."
+                }
+                groqTestStatus.value = "ERROR: $reason"
+            } catch (e: java.io.IOException) {
+                android.util.Log.e("TripAsk", "[GroqTest] Network IO Error: ${e.message}")
+                groqTestStatus.value = "ERROR: Network offline. Please check connection."
+            } catch (e: Exception) {
+                android.util.Log.e("TripAsk", "[GroqTest] Unexpected Error: ${e.message}")
+                e.printStackTrace()
+                groqTestStatus.value = "ERROR: Could not verify Groq connection."
+            } finally {
+                isTestingGroq.value = false
             }
         }
     }
@@ -177,30 +249,27 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             try {
-                // Perform a robust model listing check to verify key authenticity
+                // Perform a lightweight model listing check to verify key authenticity
                 val response = RetrofitClient.service.listModels(apiKey = cleanKey)
                 if (response.models != null) {
                     sharedPrefs.edit().putString("user_api_key", cleanKey).apply()
                     userApiKey.value = cleanKey
                     onResult(true, null)
                 } else {
-                    onResult(false, "Failed to retrieve models. Verify your key.")
+                    onResult(false, "Your API key may be invalid.")
                 }
             } catch (e: java.io.IOException) {
-                onResult(false, "Network error: Please check your internet connection.")
+                onResult(false, "Check your internet connection and try again.")
             } catch (e: retrofit2.HttpException) {
                 val code = e.code()
                 val errorMsg = when (code) {
-                    400 -> "API Key validation failed. Please check for spelling mistakes."
-                    403 -> "Validation failed. This API Key is restricted, blocked, or invalid."
-                    404 -> "API endpoint not found. Please double-check your key."
-                    429 -> "Rate limit hit. The key is valid, but is currently rate-limited by Google."
-                    else -> "Validation failed with HTTP status code $code. Please double-check your key."
+                    400, 401, 403 -> "Your API key may be invalid."
+                    429 -> "Your Gemini project may have reached its usage limit."
+                    else -> "Couldn't connect to Gemini. Please check your key."
                 }
                 onResult(false, errorMsg)
             } catch (e: Exception) {
-                val rawMessage = e.localizedMessage ?: "API validation failed. Verify your key."
-                onResult(false, sanitizeErrorMessage(rawMessage))
+                onResult(false, "Couldn't connect to Gemini. Please check your key.")
             }
         }
     }
@@ -236,24 +305,57 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         endDate.value = startDate.value.plusDays((coercedDays - 1).coerceAtLeast(0).toLong())
     }
 
-    fun updateDateRange(start: LocalDate, end: LocalDate?) {
-        startDate.value = start
-        if (end != null) {
-            endDate.value = end
-            val days = (ChronoUnit.DAYS.between(start, end) + 1).coerceIn(1, 14).toInt()
-            durationDays.value = days
-        } else {
-            endDate.value = start
-            durationDays.value = 1
-        }
+    fun updateStartDate(start: LocalDate) {
+        val today = LocalDate.now()
+        val validStart = if (start.isBefore(today)) today else start
+        startDate.value = validStart
+        endDate.value = validStart.plusDays((durationDays.value - 1).coerceAtLeast(0).toLong())
     }
 
     val travelerGroup = MutableStateFlow("Couple") // "Solo", "Couple", "Friends", "Family"
     val totalBudget = MutableStateFlow("₹10,000 - ₹20,000")
     val preferredTransportation = MutableStateFlow("No Preference") // "Train", "Bus", "Flight", "Car", "No Preference"
+    
+    val selectedTravelStyles = MutableStateFlow<Set<String>>(setOf("Relaxation"))
     val travelStyle = MutableStateFlow("Relaxation") // "Adventure", "Luxury", "Relaxation", "Nature", "Party", "Spiritual", etc.
+
+    fun toggleTravelStyle(styleName: String) {
+        val current = selectedTravelStyles.value.toMutableSet()
+        if (current.contains(styleName)) {
+            if (current.size > 1) {
+                current.remove(styleName)
+            }
+        } else {
+            current.add(styleName)
+        }
+        selectedTravelStyles.value = current
+        travelStyle.value = current.joinToString(", ")
+    }
+
     val travelPace = MutableStateFlow("Relaxed") // "Fast-paced", "Relaxed"
+    
+    val selectedSpecialRequirements = MutableStateFlow<Set<String>>(setOf("None"))
     val specialRequirements = MutableStateFlow("None") // "Vegetarian", "Pet Friendly", "Kids", "Senior Citizens", "Wheelchair Friendly", "Honeymoon", etc.
+
+    fun toggleSpecialRequirement(option: String) {
+        val current = selectedSpecialRequirements.value.toMutableSet()
+        if (option == "None") {
+            current.clear()
+            current.add("None")
+        } else {
+            current.remove("None")
+            if (current.contains(option)) {
+                current.remove(option)
+                if (current.isEmpty()) {
+                    current.add("None")
+                }
+            } else {
+                current.add(option)
+            }
+        }
+        selectedSpecialRequirements.value = current
+        specialRequirements.value = current.joinToString(", ")
+    }
 
     // Settings states
     val shouldOpenSettingsTab = MutableStateFlow<Int?>(null)
@@ -284,6 +386,14 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startTripGeneration() {
         viewModelScope.launch {
+            if (userApiKey.value.isBlank()) {
+                _planningState.value = PlanningState.Error(
+                    message = "Your saved Gemini API key could not be used.",
+                    errorKind = ErrorKind.INVALID_KEY
+                )
+                return@launch
+            }
+
             _planningState.value = PlanningState.Planning
             try {
                 val plan = repository.generateTripPlan(
@@ -309,35 +419,54 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: java.io.IOException) {
                 _planningState.value = PlanningState.Error(
-                    "You appear to be offline. Please check your internet connection and try again."
+                    message = "Check your internet connection and try again.",
+                    errorKind = ErrorKind.NETWORK
                 )
             } catch (e: retrofit2.HttpException) {
                 val code = e.code()
-                val currentM = selectedModel.value
-                val friendlyMessage = when (code) {
-                    400 -> "Invalid request parameters for $currentM. Please check your selections and try again."
-                    401 -> "Invalid or expired API key. Please check your key in Settings."
-                    403 -> "Access restricted for model $currentM. Try switching models in Settings."
-                    404 -> "Model $currentM is currently unavailable. Please select Gemini 2.5 Flash or Gemini 3.5 Flash."
-                    429 -> "Rate limit reached on $currentM. Switch to Gemini 2.5 Flash or retry in a minute."
-                    500, 502, 503, 504 -> "Service is temporarily overloaded on $currentM. Please retry in a few moments."
-                    else -> "The service returned code $code. Please try again."
+                when (code) {
+                    429 -> {
+                        _planningState.value = PlanningState.Error(
+                            message = "Your Gemini project has reached its current usage limit. Please try again later or check your Gemini usage.",
+                            errorKind = ErrorKind.RATE_LIMIT
+                        )
+                    }
+                    400, 401, 403 -> {
+                        _planningState.value = PlanningState.Error(
+                            message = "Your saved Gemini API key could not be used.",
+                            errorKind = ErrorKind.INVALID_KEY
+                        )
+                    }
+                    500, 502, 503, 504 -> {
+                        _planningState.value = PlanningState.Error(
+                            message = "Gemini is temporarily unavailable. Please try again in a few moments.",
+                            errorKind = ErrorKind.RATE_LIMIT
+                        )
+                    }
+                    else -> {
+                        _planningState.value = PlanningState.Error(
+                            message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                            errorKind = ErrorKind.GENERAL
+                        )
+                    }
                 }
-                _planningState.value = PlanningState.Error(friendlyMessage)
+            } catch (e: IllegalStateException) {
+                if (e.message == "NO_GEMINI_KEY") {
+                    _planningState.value = PlanningState.Error(
+                        message = "Your saved Gemini API key could not be used.",
+                        errorKind = ErrorKind.INVALID_KEY
+                    )
+                } else {
+                    _planningState.value = PlanningState.Error(
+                        message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                        errorKind = ErrorKind.GENERAL
+                    )
+                }
             } catch (e: Exception) {
-                val msg = e.message ?: ""
-                val friendlyMessage = when {
-                    msg.contains("API key", ignoreCase = true) || msg.contains("GEMINI_API_KEY", ignoreCase = true) -> 
-                        "AI service is currently unavailable. Please check your internet connection or enter your Gemini API key in Settings."
-                    msg.contains("unresolved reference", ignoreCase = true) || msg.contains("host", ignoreCase = true) -> 
-                        "No internet connection detected. Please connect to the internet and try again."
-                    msg.contains("timeout", ignoreCase = true) -> 
-                        "Connection timed out while generating your travel plan. Please try again."
-                    msg.contains("parse", ignoreCase = true) || msg.contains("formatting", ignoreCase = true) -> 
-                        "The plan was generated but could not be parsed. Please tap Generate again to retry!"
-                    else -> "A temporary issue occurred while preparing your travel plan. Please check your settings or try again."
-                }
-                _planningState.value = PlanningState.Error(sanitizeErrorMessage(friendlyMessage))
+                _planningState.value = PlanningState.Error(
+                    message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                    errorKind = ErrorKind.GENERAL
+                )
             }
         }
     }

@@ -215,8 +215,10 @@ fun ItineraryScreen(
                         LoadingPlannerScreen(isUsingCustomKey = userApiKeyVal.isNotBlank())
                     }
                     is PlanningState.Error -> {
+                        val errState = planningState as PlanningState.Error
                         ErrorScreen(
-                            message = (planningState as PlanningState.Error).message,
+                            message = errState.message,
+                            errorKind = errState.errorKind,
                             viewModel = viewModel,
                             onRetry = {
                                 viewModel.startTripGeneration()
@@ -234,6 +236,7 @@ fun ItineraryScreen(
                             )
                         } ?: ErrorScreen(
                             message = "No travel plan received from AI.",
+                            errorKind = com.example.viewmodel.ErrorKind.GENERAL,
                             viewModel = viewModel,
                             onRetry = {
                                 viewModel.startTripGeneration()
@@ -335,90 +338,115 @@ fun TripAskChatbot(
         isChatLoading = true
         hasError = false
 
-        android.util.Log.d("TripAsk", "[TripAsk] Question: $question")
+        android.util.Log.d("TripAsk", "[TripAsk] Question started: $question")
 
         val localAnswer = answerLocally(question, plan)
         if (localAnswer != null) {
-            android.util.Log.d("TripAsk", "[TripAsk] Route: LOCAL")
+            android.util.Log.d("TripAsk", "[TripAsk] Route: LOCAL - Answered from local itinerary data")
             coroutineScope.launch {
                 delay(300)
                 currentAnswer = localAnswer
                 isChatLoading = false
             }
         } else {
-            android.util.Log.d("TripAsk", "[TripAsk] Route: GROQ")
-            android.util.Log.d("TripAsk", "[TripAsk] Sending Groq request")
+            android.util.Log.d("TripAsk", "[TripAsk] Route: GROQ (llama-3.1-8b-instant)")
+
+            val apiKey = if (groqApiKeyVal.isNotBlank()) {
+                groqApiKeyVal
+            } else {
+                com.example.BuildConfig.GROQ_API_KEY
+            }
+
+            val keyExists = apiKey.isNotBlank() && apiKey != "MY_GROQ_API_KEY"
+            android.util.Log.d("TripAsk", "[TripAsk] Groq key exists: $keyExists")
+
+            if (!keyExists) {
+                isChatLoading = false
+                hasError = true
+                currentAnswer = "TripAsk requires a Groq API Key. Please configure your Groq key in Settings."
+                return
+            }
 
             coroutineScope.launch {
                 try {
-                    val apiKey = if (groqApiKeyVal.isNotBlank()) {
-                        groqApiKeyVal
-                    } else {
-                        com.example.BuildConfig.GROQ_API_KEY
-                    }
-
-                    if (apiKey.isBlank() || apiKey == "MY_GROQ_API_KEY") {
-                        android.util.Log.d("TripAsk", "[TripAsk] GROQ ERROR: Groq API key missing")
-                        isChatLoading = false
-                        hasError = true
-                        currentAnswer = "Please enter your Groq API Key to ask custom AI questions."
-                        return@launch
-                    }
-
                     val systemContextPrompt = """
-                        You are TripAsk, an intelligent assistant for this generated travel itinerary.
+                        You are TripAsk, a short contextual travel assistant. Answer only about the user's current itinerary and travel question. Give one concise sentence, normally 15-30 words. Do not behave like a general chatbot.
+                    """.trimIndent()
+
+                    val itineraryContext = """
                         Current Itinerary Details:
                         Destination: ${plan.destination}
                         Duration: ${plan.durationDays} days
-                        Traveler Style: ${plan.travelStyle}
-                        Travelers: ${plan.travelerGroup}
-                        Budget: ${plan.estimatedTotalBudget}
+                        Traveler Group: ${plan.travelerGroup}
+                        Travel Style: ${plan.travelStyle}
+                        Total Budget: ${plan.estimatedTotalBudget}
+                        Best Area To Stay: ${plan.accommodationGuide.bestAreaToStay}
                         Hotels: ${plan.accommodationGuide.suggestions.joinToString { it.name }}
-                        Must-Try Food: ${plan.foodGuide.mustTryDishes.joinToString()}
-                        Packing List: ${plan.packingList.joinToString()}
+                        Must Try Food: ${plan.foodGuide.mustTryDishes.joinToString()}
+                        Recommended Route: ${plan.routes.recommendedRoute}
+                        Day Plans: ${plan.days.joinToString("; ") { "Day ${it.dayNumber} (${it.theme}): " + it.activities.joinToString { a -> a.title } }}
                         Local Tips: ${plan.localTips.joinToString()}
                         Avoid: ${plan.thingsToAvoid.joinToString()}
-                        Photo Spots: ${plan.bestPhotoSpots.joinToString()}
-                        Emergency Info: ${plan.emergencyInfo}
-                        Day Plans Summary:
-                        ${plan.days.joinToString("\n") { "Day ${it.dayNumber}: ${it.theme} - Activities: ${it.activities.joinToString { a -> a.title }}" }}
+                        Packing: ${plan.packingList.joinToString()}
 
-                        Constraints for your response:
-                        - Maximum 1 sentence.
-                        - 15-30 words max.
-                        - No paragraphs.
-                        - No unnecessary explanations.
-                        - Be direct, short, and highly accurate.
+                        User Question: $question
                     """.trimIndent()
 
                     val request = GroqChatRequest(
                         messages = listOf(
                             GroqMessage(role = "system", content = systemContextPrompt),
-                            GroqMessage(role = "user", content = question)
+                            GroqMessage(role = "user", content = itineraryContext)
                         ),
                         model = "llama-3.1-8b-instant",
                         temperature = 0.2f,
-                        max_completion_tokens = 50,
-                        stream = false
+                        max_completion_tokens = 60
                     )
+
+                    android.util.Log.d("TripAsk", "[TripAsk] Starting Groq request. Model: ${request.model}")
+                    android.util.Log.d("TripAsk", "[TripAsk] Request body: $request")
+                    android.util.Log.d("TripAsk", "[TripAsk] Authorization Header: Bearer ${if (apiKey.length > 10) apiKey.take(6) + "..." + apiKey.takeLast(4) else "SHORT_KEY"}")
 
                     val response = GroqRetrofitClient.service.getChatCompletion(
                         authorization = "Bearer " + apiKey,
                         request = request
                     )
 
-                    android.util.Log.d("TripAsk", "[TripAsk] Groq status: 200 OK")
-                    android.util.Log.d("TripAsk", "[TripAsk] Groq response received")
-
                     val reply = response.choices?.firstOrNull()?.message?.content?.trim()
-                        ?: "Sorry, I couldn't generate a response."
+                    android.util.Log.d("TripAsk", "[TripAsk] Response received successfully.")
+                    android.util.Log.d("TripAsk", "[TripAsk] Response parsing result: ${if (reply != null) "SUCCESS. Length: ${reply.length}" else "EMPTY"}")
 
-                    currentAnswer = reply
-                } catch (e: Exception) {
-                    val errorText = e.localizedMessage ?: "Network connection error"
-                    android.util.Log.d("TripAsk", "[TripAsk] GROQ ERROR: $errorText")
+                    if (!reply.isNullOrBlank()) {
+                        currentAnswer = reply
+                    } else {
+                        android.util.Log.e("TripAsk", "[TripAsk] Error: Received empty reply from Groq.")
+                        hasError = true
+                        currentAnswer = "TripAsk couldn't reach AI. Please check your Groq connection and try again."
+                    }
+                } catch (e: retrofit2.HttpException) {
+                    val statusCode = e.code()
+                    val errorBody = e.response()?.errorBody()?.string() ?: "NO_ERROR_BODY"
+                    android.util.Log.e("TripAsk", "[TripAsk] HTTP Error code: $statusCode")
+                    android.util.Log.e("TripAsk", "[TripAsk] HTTP Error body: $errorBody")
+                    
+                    val errorMessage = when (statusCode) {
+                        401 -> "Unauthorized: Invalid API Key."
+                        404 -> "Not Found: Check the API endpoint or model name."
+                        429 -> "Rate Limit Exceeded: Slow down requests."
+                        else -> "HTTP Error $statusCode"
+                    }
+                    
                     hasError = true
-                    currentAnswer = "TripAsk couldn't reach AI. Please try again."
+                    currentAnswer = "TripAsk Error ($errorMessage). Please try again later."
+                } catch (e: java.io.IOException) {
+                    android.util.Log.e("TripAsk", "[TripAsk] Network IO Exception: ${e.message}")
+                    e.printStackTrace()
+                    hasError = true
+                    currentAnswer = "Network error. Please check your internet connection."
+                } catch (e: Exception) {
+                    android.util.Log.e("TripAsk", "[TripAsk] Caught Unexpected Exception: ${e.javaClass.simpleName} - ${e.message}")
+                    e.printStackTrace()
+                    hasError = true
+                    currentAnswer = "TripAsk encountered an unexpected error. Please try again."
                 } finally {
                     isChatLoading = false
                 }
@@ -1122,12 +1150,33 @@ fun LoadingPlannerScreen(isUsingCustomKey: Boolean) {
 @Composable
 fun ErrorScreen(
     message: String,
+    errorKind: com.example.viewmodel.ErrorKind? = null,
     viewModel: TripViewModel,
     onRetry: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
     val activeModel by viewModel.selectedModel.collectAsState()
     val userApiKeyVal by viewModel.userApiKey.collectAsState()
+    var showGeminiSetupDialog by remember { mutableStateOf(false) }
+
+    val isInvalidKey = errorKind == com.example.viewmodel.ErrorKind.INVALID_KEY || userApiKeyVal.isBlank()
+    val isRateLimit = errorKind == com.example.viewmodel.ErrorKind.RATE_LIMIT
+    val isNetwork = errorKind == com.example.viewmodel.ErrorKind.NETWORK
+
+    val errorTitle = when {
+        isInvalidKey -> "Invalid Gemini API key"
+        isRateLimit -> "Gemini rate limit reached"
+        isNetwork -> "Network Connection Issue"
+        else -> "Couldn't generate this trip"
+    }
+
+    val errorDescription = when {
+        isInvalidKey -> "Please check your API key and try again."
+        isRateLimit -> "Please wait a moment or use your own API key with available quota."
+        isNetwork -> "Could not connect to Gemini servers. Please check your internet connection."
+        message.isNotBlank() -> message
+        else -> "The travel planner couldn't complete the request. Please try again or re-connect your key."
+    }
 
     Box(
         modifier = Modifier
@@ -1152,20 +1201,20 @@ fun ErrorScreen(
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .background(ArtTertiaryPink, CircleShape)
-                        .border(1.5.dp, ArtBorderDark, CircleShape),
+                        .background(if (isInvalidKey || isRateLimit) Color(0xFFFEE2E2) else ArtTertiaryPink, CircleShape)
+                        .border(1.5.dp, if (isInvalidKey || isRateLimit) Color(0xFFDC2626) else ArtBorderDark, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Warning",
-                        tint = ArtTextDark,
+                        imageVector = if (isInvalidKey) Icons.Default.KeyOff else if (isRateLimit) Icons.Default.HourglassTop else Icons.Default.Warning,
+                        contentDescription = "Error",
+                        tint = if (isInvalidKey || isRateLimit) Color(0xFFDC2626) else ArtTextDark,
                         modifier = Modifier.size(28.dp)
                     )
                 }
 
                 Text(
-                    text = "Couldn't generate this trip",
+                    text = errorTitle,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = ArtTextDark,
@@ -1173,7 +1222,7 @@ fun ErrorScreen(
                 )
 
                 Text(
-                    text = if (message.isNotBlank()) message else "The travel planner couldn't complete the request. You can retry with an alternative model or check your key in Settings.",
+                    text = errorDescription,
                     fontSize = 13.sp,
                     color = ArtGrayMuted,
                     textAlign = TextAlign.Center,
@@ -1198,7 +1247,7 @@ fun ErrorScreen(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "Model used: $activeModel (${if (userApiKeyVal.isNotBlank()) "Custom Key" else "App Default"})",
+                            text = "Model used: $activeModel",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = ArtPrimaryPurple
@@ -1206,68 +1255,70 @@ fun ErrorScreen(
                     }
                 }
 
-                // Quick alternative model selector
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ArtSoftLavender, RoundedCornerShape(14.dp))
-                        .border(1.dp, ArtBorderDark.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "TRY AN ALTERNATIVE MODEL",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ArtPrimaryPurple,
-                        letterSpacing = 0.5.sp
-                    )
+                // Quick alternative model selector if rate limit or general error
+                if (!isInvalidKey) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ArtSoftLavender, RoundedCornerShape(14.dp))
+                            .border(1.dp, ArtBorderDark.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "TRY AN ALTERNATIVE MODEL",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArtPrimaryPurple,
+                            letterSpacing = 0.5.sp
+                        )
 
-                    val alternativeModels = viewModel.availableGeminiModels.filter { it.id != activeModel }.take(3)
-                    alternativeModels.forEach { altModel ->
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.selectGeminiModel(altModel.id)
-                                onRetry()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(38.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.6f)),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White,
-                                contentColor = ArtTextDark
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        val alternativeModels = viewModel.availableGeminiModels.filter { it.id != activeModel }.take(3)
+                        alternativeModels.forEach { altModel ->
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.selectGeminiModel(altModel.id)
+                                    onRetry()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.6f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White,
+                                    contentColor = ArtTextDark
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = ArtPrimaryPurple,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = ArtPrimaryPurple,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Switch to ${altModel.displayName}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     Text(
-                                        text = "Switch to ${altModel.displayName}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        text = altModel.badge,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArtPrimaryPurple
                                     )
                                 }
-                                Text(
-                                    text = altModel.badge,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ArtPrimaryPurple
-                                )
                             }
                         }
                     }
@@ -1279,57 +1330,97 @@ fun ErrorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(
-                        onClick = onRetry,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ArtPrimaryPurple,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Retry with $activeModel", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
+                    if (isInvalidKey || isRateLimit) {
+                        Button(
+                            onClick = { showGeminiSetupDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ArtPrimaryPurple,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Reconnect Key", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
 
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.openSettings(1)
-                            onNavigateBack()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.5.dp, ArtBorderDark),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtTextDark)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Configure Gemini in Settings", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        OutlinedButton(
+                            onClick = onRetry,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, ArtBorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtTextDark)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Try Again", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ArtPrimaryPurple,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Try Again", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showGeminiSetupDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, ArtBorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtTextDark)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Gemini Settings", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
                 }
-
-                Text(
-                    text = "You can switch models freely. Both the default key and custom key support all listed models.",
-                    fontSize = 11.sp,
-                    color = ArtGrayMuted,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
+        }
+
+        if (showGeminiSetupDialog) {
+            GeminiSetupDialog(
+                viewModel = viewModel,
+                initialStep = if (isInvalidKey) 4 else 0,
+                onDismiss = { showGeminiSetupDialog = false },
+                onConnectedSuccess = {
+                    showGeminiSetupDialog = false
+                    onRetry()
+                }
+            )
         }
     }
 }

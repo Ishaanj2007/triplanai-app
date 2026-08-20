@@ -59,7 +59,7 @@ class TripRepository(private val tripDao: TripDao) {
         userApiKey: String? = null,
         personality: String = "Friendly"
     ): TripPlan = withContext(Dispatchers.IO) {
-        val apiKey = if (!userApiKey.isNullOrBlank()) userApiKey else BuildConfig.GEMINI_API_KEY
+        val apiKey = if (!userApiKey.isNullOrBlank()) userApiKey else throw IllegalStateException("NO_GEMINI_KEY")
 
         val personalityInstruction = when (personality) {
             "Professional" -> """
