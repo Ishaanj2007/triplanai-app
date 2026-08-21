@@ -13,9 +13,12 @@ import java.util.concurrent.TimeUnit
 @JsonClass(generateAdapter = true)
 data class GroqChatRequest(
     val messages: List<GroqMessage>,
-    val model: String = "llama-3.1-8b-instant",
+    val model: String = "openai/gpt-oss-20b",
     val temperature: Float = 0.2f,
-    val max_completion_tokens: Int = 60
+    val max_completion_tokens: Int = 100,
+    val reasoning_effort: String = "low",
+    val include_reasoning: Boolean = false,
+    val stream: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -52,7 +55,7 @@ object GroqRetrofitClient {
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(okhttp3.logging.HttpLoggingInterceptor().apply {
-            level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY
+            level = okhttp3.logging.HttpLoggingInterceptor.Level.NONE
         })
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

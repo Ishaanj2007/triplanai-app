@@ -82,9 +82,19 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     // User connected key, model, and preferences
     val userApiKey = MutableStateFlow(sharedPrefs.getString("user_api_key", "") ?: "")
-    val groqApiKey = MutableStateFlow(
-        if (BuildConfig.GROQ_API_KEY != "MY_GROQ_API_KEY") BuildConfig.GROQ_API_KEY else ""
-    )
+    fun getGroqApiKey(): String {
+        val buildKey = BuildConfig.GROQ_API_KEY
+        if (buildKey.isNotBlank() && buildKey != "DEFAULT_GROQ_KEY" && buildKey != "MY_GROQ_API_KEY") {
+            return buildKey.trim()
+        }
+        val savedKey = sharedPrefs.getString("groq_api_key", "") ?: ""
+        if (savedKey.isNotBlank() && savedKey != "DEFAULT_GROQ_KEY" && savedKey != "MY_GROQ_API_KEY") {
+            return savedKey.trim()
+        }
+        return ""
+    }
+
+    val groqApiKey = MutableStateFlow(getGroqApiKey())
     val autoSaveEnabled = MutableStateFlow(sharedPrefs.getBoolean("auto_save_enabled", false))
     val selectedTheme = MutableStateFlow(sharedPrefs.getInt("selected_theme", 0))
     val selectedPersonality = MutableStateFlow(sharedPrefs.getString("selected_personality", "Friendly") ?: "Friendly")
@@ -184,56 +194,45 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isTestingGroq.value = true
             groqTestStatus.value = "Testing Groq connection..."
-            val key = if (groqApiKey.value.isNotBlank()) groqApiKey.value.trim() else BuildConfig.GROQ_API_KEY
-            if (key.isBlank() || key == "MY_GROQ_API_KEY") {
+            val key = getGroqApiKey()
+            if (key.isBlank()) {
                 groqTestStatus.value = "NOT_CONFIGURED: No Groq API key set."
                 isTestingGroq.value = false
                 return@launch
             }
 
             try {
-                android.util.Log.d("TripAsk", "[GroqTest] Starting connection test with key: ${if (key.length > 10) key.take(6) + "..." + key.takeLast(4) else "SHORT_KEY"}")
                 val request = GroqChatRequest(
                     messages = listOf(
-                        GroqMessage(role = "system", content = "You are a healthcheck bot."),
-                        GroqMessage(role = "user", content = "ping")
+                        GroqMessage(
+                            role = "system",
+                            content = "You are TripAsk, a fast travel assistant for the user's current itinerary. Answer only questions related to the trip. Keep answers direct and useful, maximum 30 words."
+                        ),
+                        GroqMessage(role = "user", content = "Is my budget enough for this trip?")
                     ),
-                    model = "llama-3.1-8b-instant",
-                    temperature = 0.1f,
-                    max_completion_tokens = 10
+                    model = "openai/gpt-oss-20b",
+                    temperature = 0.2f,
+                    max_completion_tokens = 100,
+                    reasoning_effort = "low",
+                    include_reasoning = false,
+                    stream = false
                 )
                 val response = GroqRetrofitClient.service.getChatCompletion(
                     authorization = "Bearer $key",
                     request = request
                 )
                 val reply = response.choices?.firstOrNull()?.message?.content?.trim()
-                android.util.Log.d("TripAsk", "[GroqTest] Response received: $reply")
                 
                 if (!reply.isNullOrBlank()) {
-                    groqTestStatus.value = "SUCCESS: Groq & Llama 3.1 8B connected."
+                    groqTestStatus.value = "SUCCESS: Groq & openai/gpt-oss-20b connected."
                 } else {
-                    android.util.Log.w("TripAsk", "[GroqTest] Received empty reply.")
                     groqTestStatus.value = "SUCCESS: Groq connection active."
                 }
             } catch (e: retrofit2.HttpException) {
-                val code = e.code()
-                val errorBody = e.response()?.errorBody()?.string() ?: "NO_BODY"
-                android.util.Log.e("TripAsk", "[GroqTest] HTTP Error $code: $errorBody")
-                
-                val reason = when (code) {
-                    401 -> "Invalid Groq API key credentials."
-                    403 -> "Groq access denied. Key lacks permissions for llama-3.1-8b-instant."
-                    429 -> "Groq rate limit reached. Please retry in a moment."
-                    500, 502, 503, 504 -> "Groq service is temporarily busy."
-                    else -> "Groq connection failed (HTTP $code)."
-                }
-                groqTestStatus.value = "ERROR: $reason"
+                groqTestStatus.value = "ERROR: TripAsk is temporarily unavailable. Please try again."
             } catch (e: java.io.IOException) {
-                android.util.Log.e("TripAsk", "[GroqTest] Network IO Error: ${e.message}")
                 groqTestStatus.value = "ERROR: Network offline. Please check connection."
             } catch (e: Exception) {
-                android.util.Log.e("TripAsk", "[GroqTest] Unexpected Error: ${e.message}")
-                e.printStackTrace()
                 groqTestStatus.value = "ERROR: Could not verify Groq connection."
             } finally {
                 isTestingGroq.value = false

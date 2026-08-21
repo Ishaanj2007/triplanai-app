@@ -278,178 +278,89 @@ fun TripAskChatbot(
     var isChatLoading by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
 
-    val groqApiKeyVal by viewModel.groqApiKey.collectAsState()
-    val hasGroqApiKey = groqApiKeyVal.isNotBlank() || (com.example.BuildConfig.GROQ_API_KEY != "MY_GROQ_API_KEY" && com.example.BuildConfig.GROQ_API_KEY.isNotBlank())
-
     val coroutineScope = rememberCoroutineScope()
 
     // Drag to dismiss gesture states
     var swipeOffset by remember { mutableStateOf(0f) }
     val swipeThreshold = 180f
 
-    fun answerLocally(question: String, plan: TripPlan): String? {
-        val q = question.lowercase().trim().removeSuffix("?").trim()
-
-        // Exact stored facts retrieval only
-        return when {
-            // Destination
-            q == "what is my destination" || q == "where am i going" || q == "destination" || q == "where is my trip" -> {
-                "Your destination is ${plan.destination}."
-            }
-            // Duration / Days
-            q == "how many days is my trip" || q == "how many days is the trip" || q == "how long is my trip" || q == "trip duration" || q == "how many days" -> {
-                "Your trip to ${plan.destination} is planned for ${plan.durationDays} days."
-            }
-            // Total Budget
-            q == "what is my total budget" || q == "what is my total estimated budget" || q == "what is my budget" || q == "total budget" || q == "budget" -> {
-                "Your estimated total budget is ${plan.estimatedTotalBudget}."
-            }
-            // Hotel / Accommodation Selected
-            q == "what hotel did i select" || q == "what accommodation did i select" || q == "where am i staying" || q == "what hotel is selected" -> {
-                val suggestionsList = plan.accommodationGuide.suggestions.take(2).joinToString { it.name }
-                "For ${plan.destination}, recommended stay area is ${plan.accommodationGuide.bestAreaToStay}. Options: $suggestionsList."
-            }
-            // Transport Selected
-            q == "which transport did i select" || q == "what transport did i select" || q == "how am i traveling" -> {
-                "Recommended route: ${plan.routes.recommendedRoute}. Transport options: " +
-                plan.routes.options.joinToString { "${it.transportMode} (${it.estimatedFare})" } + "."
-            }
-            // Day Plan
-            q.matches(Regex("^(what is (planned|on) day (\\d+)|day (\\d+) plan)$")) -> {
-                val dayRegex = Regex("^(what is (planned|on) day (\\d+)|day (\\d+) plan)$")
-                val match = dayRegex.find(q)
-                val dayNumStr = match?.groupValues?.get(3)?.ifEmpty { match.groupValues.get(4) } ?: ""
-                val dayNum = dayNumStr.toIntOrNull()
-                if (dayNum != null) {
-                    val day = plan.days.find { it.dayNumber == dayNum }
-                    if (day != null) {
-                        "Day $dayNum (${day.theme}): " + day.activities.joinToString { it.title } + "."
-                    } else null
-                } else null
-            }
-            else -> null
-        }
-    }
-
     fun handleSend(question: String) {
-        if (question.isBlank()) return
-        currentQuestion = question
+        val trimmedQuestion = question.trim()
+        if (trimmedQuestion.isBlank() || isChatLoading) return
+
+        currentQuestion = trimmedQuestion
         currentAnswer = null
         isChatLoading = true
         hasError = false
 
-        android.util.Log.d("TripAsk", "[TripAsk] Question started: $question")
+        val apiKey = viewModel.getGroqApiKey()
 
-        val localAnswer = answerLocally(question, plan)
-        if (localAnswer != null) {
-            android.util.Log.d("TripAsk", "[TripAsk] Route: LOCAL - Answered from local itinerary data")
-            coroutineScope.launch {
-                delay(300)
-                currentAnswer = localAnswer
-                isChatLoading = false
-            }
-        } else {
-            android.util.Log.d("TripAsk", "[TripAsk] Route: GROQ (llama-3.1-8b-instant)")
+        if (apiKey.isBlank()) {
+            isChatLoading = false
+            hasError = true
+            currentAnswer = "TripAsk is temporarily unavailable. Please try again."
+            return
+        }
 
-            val apiKey = if (groqApiKeyVal.isNotBlank()) {
-                groqApiKeyVal
-            } else {
-                com.example.BuildConfig.GROQ_API_KEY
-            }
+        coroutineScope.launch {
+            try {
+                val systemPrompt = """
+                    You are TripAsk, a fast travel assistant for the user's current itinerary. Answer only questions related to the trip. Keep answers direct and useful, maximum 1 sentence and maximum 30 words.
 
-            val keyExists = apiKey.isNotBlank() && apiKey != "MY_GROQ_API_KEY"
-            android.util.Log.d("TripAsk", "[TripAsk] Groq key exists: $keyExists")
+                    CURRENT ITINERARY DETAILS:
+                    - Destination: ${plan.destination}
+                    - Duration: ${plan.durationDays} days
+                    - Traveler Group: ${plan.travelerGroup}
+                    - Travel Style: ${plan.travelStyle}
+                    - Total Estimated Budget: ${plan.estimatedTotalBudget}
+                    - Best Area To Stay: ${plan.accommodationGuide.bestAreaToStay}
+                    - Hotel Suggestions: ${plan.accommodationGuide.suggestions.joinToString { "${it.name} (${it.priceRange})" }}
+                    - Must Try Food & Dishes: ${plan.foodGuide.mustTryDishes.joinToString()}
+                    - Recommended Restaurants: ${plan.foodGuide.recommendedRestaurants.joinToString { "${it.name} (${it.type})" }}
+                    - Recommended Route & Transport: ${plan.routes.recommendedRoute}
+                    - Day Plans: ${plan.days.joinToString("; ") { "Day ${it.dayNumber} (${it.theme}): " + it.activities.joinToString { a -> "${a.title}: ${a.description}" } }}
+                    - Local Tips: ${plan.localTips.joinToString()}
+                    - Things to Avoid: ${plan.thingsToAvoid.joinToString()}
+                    - Packing List: ${plan.packingList.joinToString()}
 
-            if (!keyExists) {
-                isChatLoading = false
-                hasError = true
-                currentAnswer = "TripAsk requires a Groq API Key. Please configure your Groq key in Settings."
-                return
-            }
+                    SYSTEM RULES:
+                    1. Answer ONLY questions related to this trip and itinerary.
+                    2. If the question is unrelated to this trip (e.g. general knowledge, famous people, politics, math, who is someone), respond politely with: "TripAsk is only for questions about your current itinerary."
+                    3. Keep answers short and useful: maximum 1 sentence by default and maximum 30 words.
+                    4. Do not invent information that isn't available in the itinerary. If required information is missing, say so briefly.
+                """.trimIndent()
 
-            coroutineScope.launch {
-                try {
-                    val systemContextPrompt = """
-                        You are TripAsk, a short contextual travel assistant. Answer only about the user's current itinerary and travel question. Give one concise sentence, normally 15-30 words. Do not behave like a general chatbot.
-                    """.trimIndent()
+                val request = GroqChatRequest(
+                    messages = listOf(
+                        GroqMessage(role = "system", content = systemPrompt),
+                        GroqMessage(role = "user", content = trimmedQuestion)
+                    ),
+                    model = "openai/gpt-oss-20b",
+                    temperature = 0.2f,
+                    max_completion_tokens = 100,
+                    reasoning_effort = "low",
+                    include_reasoning = false,
+                    stream = false
+                )
 
-                    val itineraryContext = """
-                        Current Itinerary Details:
-                        Destination: ${plan.destination}
-                        Duration: ${plan.durationDays} days
-                        Traveler Group: ${plan.travelerGroup}
-                        Travel Style: ${plan.travelStyle}
-                        Total Budget: ${plan.estimatedTotalBudget}
-                        Best Area To Stay: ${plan.accommodationGuide.bestAreaToStay}
-                        Hotels: ${plan.accommodationGuide.suggestions.joinToString { it.name }}
-                        Must Try Food: ${plan.foodGuide.mustTryDishes.joinToString()}
-                        Recommended Route: ${plan.routes.recommendedRoute}
-                        Day Plans: ${plan.days.joinToString("; ") { "Day ${it.dayNumber} (${it.theme}): " + it.activities.joinToString { a -> a.title } }}
-                        Local Tips: ${plan.localTips.joinToString()}
-                        Avoid: ${plan.thingsToAvoid.joinToString()}
-                        Packing: ${plan.packingList.joinToString()}
+                val response = GroqRetrofitClient.service.getChatCompletion(
+                    authorization = "Bearer $apiKey",
+                    request = request
+                )
 
-                        User Question: $question
-                    """.trimIndent()
+                val reply = response.choices?.firstOrNull()?.message?.content?.trim()
 
-                    val request = GroqChatRequest(
-                        messages = listOf(
-                            GroqMessage(role = "system", content = systemContextPrompt),
-                            GroqMessage(role = "user", content = itineraryContext)
-                        ),
-                        model = "llama-3.1-8b-instant",
-                        temperature = 0.2f,
-                        max_completion_tokens = 60
-                    )
-
-                    android.util.Log.d("TripAsk", "[TripAsk] Starting Groq request. Model: ${request.model}")
-                    android.util.Log.d("TripAsk", "[TripAsk] Request body: $request")
-                    android.util.Log.d("TripAsk", "[TripAsk] Authorization Header: Bearer ${if (apiKey.length > 10) apiKey.take(6) + "..." + apiKey.takeLast(4) else "SHORT_KEY"}")
-
-                    val response = GroqRetrofitClient.service.getChatCompletion(
-                        authorization = "Bearer " + apiKey,
-                        request = request
-                    )
-
-                    val reply = response.choices?.firstOrNull()?.message?.content?.trim()
-                    android.util.Log.d("TripAsk", "[TripAsk] Response received successfully.")
-                    android.util.Log.d("TripAsk", "[TripAsk] Response parsing result: ${if (reply != null) "SUCCESS. Length: ${reply.length}" else "EMPTY"}")
-
-                    if (!reply.isNullOrBlank()) {
-                        currentAnswer = reply
-                    } else {
-                        android.util.Log.e("TripAsk", "[TripAsk] Error: Received empty reply from Groq.")
-                        hasError = true
-                        currentAnswer = "TripAsk couldn't reach AI. Please check your Groq connection and try again."
-                    }
-                } catch (e: retrofit2.HttpException) {
-                    val statusCode = e.code()
-                    val errorBody = e.response()?.errorBody()?.string() ?: "NO_ERROR_BODY"
-                    android.util.Log.e("TripAsk", "[TripAsk] HTTP Error code: $statusCode")
-                    android.util.Log.e("TripAsk", "[TripAsk] HTTP Error body: $errorBody")
-                    
-                    val errorMessage = when (statusCode) {
-                        401 -> "Unauthorized: Invalid API Key."
-                        404 -> "Not Found: Check the API endpoint or model name."
-                        429 -> "Rate Limit Exceeded: Slow down requests."
-                        else -> "HTTP Error $statusCode"
-                    }
-                    
+                if (!reply.isNullOrBlank()) {
+                    currentAnswer = reply
+                } else {
                     hasError = true
-                    currentAnswer = "TripAsk Error ($errorMessage). Please try again later."
-                } catch (e: java.io.IOException) {
-                    android.util.Log.e("TripAsk", "[TripAsk] Network IO Exception: ${e.message}")
-                    e.printStackTrace()
-                    hasError = true
-                    currentAnswer = "Network error. Please check your internet connection."
-                } catch (e: Exception) {
-                    android.util.Log.e("TripAsk", "[TripAsk] Caught Unexpected Exception: ${e.javaClass.simpleName} - ${e.message}")
-                    e.printStackTrace()
-                    hasError = true
-                    currentAnswer = "TripAsk encountered an unexpected error. Please try again."
-                } finally {
-                    isChatLoading = false
+                    currentAnswer = "TripAsk is temporarily unavailable. Please try again."
                 }
+            } catch (e: Exception) {
+                hasError = true
+                currentAnswer = "TripAsk is temporarily unavailable. Please try again."
+            } finally {
+                isChatLoading = false
             }
         }
     }
@@ -536,7 +447,9 @@ fun TripAskChatbot(
                     )
                     .clickable(enabled = false) {}, // prevent clicks leaking through
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFAF6FF)), // Elegant pastel lilac-white
+                colors = CardDefaults.cardColors(
+                    containerColor = if (LocalTripColors.current.isDark) ArtCardBackground else Color(0xFFFAF6FF)
+                ),
                 border = BorderStroke(2.5.dp, ArtBorderDark)
             ) {
                 Column(
@@ -549,7 +462,10 @@ fun TripAskChatbot(
                         modifier = Modifier
                             .width(44.dp)
                             .height(5.dp)
-                            .background(ArtBorderDark.copy(alpha = 0.4f), CircleShape)
+                            .background(
+                                if (LocalTripColors.current.isDark) ArtGrayMuted.copy(alpha = 0.5f) else ArtBorderDark.copy(alpha = 0.4f),
+                                CircleShape
+                            )
                             .align(Alignment.CenterHorizontally)
                     )
 
@@ -592,7 +508,10 @@ fun TripAskChatbot(
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(Color.White, CircleShape)
+                                .background(
+                                    if (LocalTripColors.current.isDark) ArtGrayLight else Color.White,
+                                    CircleShape
+                                )
                                 .border(1.5.dp, ArtBorderDark, CircleShape)
                                 .clickable { showChatBot = false },
                             contentAlignment = Alignment.Center
@@ -652,8 +571,8 @@ fun TripAskChatbot(
                             singleLine = true,
                             enabled = !isChatLoading,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
+                                focusedContainerColor = if (LocalTripColors.current.isDark) ArtGrayLight else Color.White,
+                                unfocusedContainerColor = if (LocalTripColors.current.isDark) ArtGrayLight else Color.White,
                                 focusedBorderColor = ArtPrimaryPurple,
                                 unfocusedBorderColor = ArtBorderDark,
                                 focusedTextColor = ArtTextDark,
@@ -697,7 +616,7 @@ fun TripAskChatbot(
                             Icon(
                                 imageVector = Icons.Default.Send,
                                 contentDescription = "Send",
-                                tint = Color.White,
+                                tint = if (LocalTripColors.current.isDark) Color(0xFF0F0F12) else Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -718,7 +637,7 @@ fun TripAskChatbot(
                                     .fillMaxWidth()
                                     .border(2.dp, ArtBorderDark, RoundedCornerShape(16.dp)),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EFFF))
+                                colors = CardDefaults.cardColors(containerColor = ArtSecondaryPurple)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -741,109 +660,6 @@ fun TripAskChatbot(
                                     )
                                 }
                             }
-                        } else if (hasError && currentQuestion != null && !hasGroqApiKey) {
-                            // Custom API Key configuration card within sheet
-                            var enteredKey by remember { mutableStateOf("") }
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(2.dp, ArtBorderDark, RoundedCornerShape(16.dp)),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFAF6FF))
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .background(ArtPeachGold, CircleShape)
-                                                .border(1.5.dp, ArtBorderDark, CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.VpnKey,
-                                                contentDescription = null,
-                                                tint = ArtTextDark,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = "Groq API Key Required",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 15.sp,
-                                            color = ArtTextDark
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Text(
-                                        text = "Custom queries require a Groq API Key. Common questions (budget, hotels, days, food, wear) are answered locally for free!",
-                                        fontSize = 11.sp,
-                                        color = ArtGrayMuted,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = 15.sp
-                                    )
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = enteredKey,
-                                            onValueChange = { enteredKey = it },
-                                            placeholder = { Text("gsk_...", fontSize = 12.sp, color = ArtGrayMuted) },
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = Color.White,
-                                                unfocusedContainerColor = Color.White,
-                                                focusedBorderColor = ArtPrimaryPurple,
-                                                unfocusedBorderColor = ArtBorderDark,
-                                                focusedTextColor = ArtTextDark,
-                                                unfocusedTextColor = ArtTextDark
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(46.dp)
-                                        )
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        Button(
-                                            onClick = {
-                                                if (enteredKey.isNotBlank()) {
-                                                    viewModel.saveGroqApiKey(enteredKey)
-                                                    handleSend(currentQuestion ?: "")
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = ArtPrimaryPurple),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .height(46.dp)
-                                                .border(1.5.dp, ArtBorderDark, RoundedCornerShape(12.dp))
-                                        ) {
-                                            Text(
-                                                text = "Connect",
-                                                fontWeight = FontWeight.Black,
-                                                color = Color.White,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         } else if (currentAnswer != null) {
                             // Beautiful ONE Answer Card display (NO powered by labels, NO chat list history)
                             Card(
@@ -851,7 +667,7 @@ fun TripAskChatbot(
                                     .fillMaxWidth()
                                     .border(2.dp, ArtBorderDark, RoundedCornerShape(16.dp)),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EFFF))
+                                colors = CardDefaults.cardColors(containerColor = ArtSecondaryPurple)
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -880,15 +696,22 @@ fun TripAskChatbot(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Box(
                                                 modifier = Modifier
-                                                    .background(Color(0xFFE8F5E9), RoundedCornerShape(6.dp))
-                                                    .border(1.dp, Color(0xFF2E7D32).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                                    .background(
+                                                        if (LocalTripColors.current.isDark) Color(0xFF1B3527) else Color(0xFFE8F5E9),
+                                                        RoundedCornerShape(6.dp)
+                                                    )
+                                                    .border(
+                                                        1.dp,
+                                                        if (LocalTripColors.current.isDark) Color(0xFF81C784).copy(alpha = 0.5f) else Color(0xFF2E7D32).copy(alpha = 0.5f),
+                                                        RoundedCornerShape(6.dp)
+                                                    )
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
                                                     text = "New",
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF2E7D32)
+                                                    color = if (LocalTripColors.current.isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
                                                 )
                                             }
                                         }
@@ -927,7 +750,9 @@ fun TripAskChatbot(
                                     .fillMaxWidth()
                                     .border(2.dp, ArtBorderDark, RoundedCornerShape(16.dp)),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.White)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (LocalTripColors.current.isDark) ArtGrayLight else Color.White
+                                )
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -961,7 +786,7 @@ fun TripAskChatbot(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFFFF9E6), RoundedCornerShape(16.dp))
+                            .background(ArtPeachGold, RoundedCornerShape(16.dp))
                             .border(1.5.dp, ArtBorderDark, RoundedCornerShape(16.dp))
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -969,7 +794,7 @@ fun TripAskChatbot(
                         Icon(
                             imageVector = Icons.Default.Lightbulb,
                             contentDescription = null,
-                            tint = Color(0xFFFBC02D),
+                            tint = if (LocalTripColors.current.isDark) Color(0xFFFFD54F) else Color(0xFFFBC02D),
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -996,7 +821,10 @@ private fun SuggestionChip(
 ) {
     Row(
         modifier = Modifier
-            .background(Color.White, RoundedCornerShape(16.dp))
+            .background(
+                if (LocalTripColors.current.isDark) ArtGrayLight else Color.White,
+                RoundedCornerShape(16.dp)
+            )
             .border(1.5.dp, ArtBorderDark, RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),

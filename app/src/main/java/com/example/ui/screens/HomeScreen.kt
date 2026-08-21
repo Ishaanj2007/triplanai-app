@@ -23,9 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -792,47 +794,62 @@ fun HomeScreen(
                             .navigationBarsPadding()
                             .imePadding()
                     ) {
-                    Row(
+                        Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { showSettingsDialog = false }) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(ArtSecondaryPurple, RoundedCornerShape(12.dp))
+                                .clickable { showSettingsDialog = false },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.ArrowBack,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = ArtTextDark,
-                                modifier = Modifier.size(24.dp)
+                                tint = ArtPrimaryPurple,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Text(
                             text = "Settings",
-                            fontSize = 20.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = ArtTextDark
                         )
                     }
 
-                    ScrollableTabRow(
+                    TabRow(
                         selectedTabIndex = selectedSettingsTab,
-                        edgePadding = 16.dp,
                         containerColor = Color.Transparent,
                         contentColor = ArtPrimaryPurple,
                         divider = {
-                            HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.2f))
+                            HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.35f), thickness = 1.dp)
+                        },
+                        indicator = { tabPositions ->
+                            if (selectedSettingsTab < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    Modifier.tabIndicatorOffset(tabPositions[selectedSettingsTab]),
+                                    color = ArtPrimaryPurple,
+                                    height = 3.dp
+                                )
+                            }
                         }
                     ) {
                         listOf("General", "AI Providers", "Support & About").forEachIndexed { index, title ->
+                            val selected = selectedSettingsTab == index
                             Tab(
-                                selected = selectedSettingsTab == index,
+                                selected = selected,
                                 onClick = { selectedSettingsTab = index },
                                 text = {
                                     Text(
                                         text = title,
-                                        fontWeight = if (selectedSettingsTab == index) FontWeight.Bold else FontWeight.Medium,
-                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 14.sp,
                                         maxLines = 1
                                     )
                                 },
@@ -853,96 +870,172 @@ fun HomeScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     contentPadding = PaddingValues(
-                                        start = 20.dp,
-                                        top = 20.dp,
-                                        end = 20.dp,
-                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                        start = 16.dp,
+                                        top = 16.dp,
+                                        end = 16.dp,
+                                        bottom = 48.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(20.dp)
                                 ) {
+                                    // -------------------------------------------------------------
+                                    // SECTION 1: APPEARANCE
+                                    // -------------------------------------------------------------
                                     item {
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .widthIn(max = 680.dp)
                                         ) {
                                             Text(
-                                                "APPLICATION STYLE & THEME",
-                                                fontSize = 11.sp,
+                                                text = "APPEARANCE",
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ArtPrimaryPurple,
-                                                letterSpacing = 1.sp
+                                                letterSpacing = 0.8.sp,
+                                                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                                             )
 
-                                            val themeOptions = listOf(
-                                                0 to Pair("Auto (System Default)", "Follows Android OS Dark / Light settings"),
-                                                1 to Pair("Deep Dark Mode", "Eye-friendly dark tones with high-contrast elements"),
-                                                2 to Pair("Soft Pastel (Light)", "Clean, modern pastel aesthetic"),
-                                                3 to Pair("Coral Sunset (Warm)", "Warm peach & coral sunset palette")
-                                            )
-
-                                            themeOptions.forEach { (themeKey, details) ->
-                                                val (name, subtitle) = details
-                                                val selected = currentTheme == themeKey
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(16.dp))
-                                                        .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(16.dp))
-                                                        .clickable { viewModel.selectedTheme.value = themeKey }
-                                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                                ) {
-                                                    RadioButton(
-                                                        selected = selected,
-                                                        onClick = { viewModel.selectedTheme.value = themeKey },
-                                                        colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(22.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.6f)),
+                                                colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                            ) {
+                                                Column(modifier = Modifier.padding(8.dp)) {
+                                                    val themeOptions = listOf(
+                                                        0 to Pair("Auto (System Default)", "Follow Android system Dark / Light mode"),
+                                                        1 to Pair("Deep Dark Mode", "Comfortable dark theme for low light"),
+                                                        2 to Pair("Soft Pastel (Light)", "Clean and modern pastel look"),
+                                                        3 to Pair("Coral Sunset (Warm)", "Warm and cozy sunset palette")
                                                     )
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(name, color = ArtTextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                                        Text(subtitle, color = ArtGrayMuted, fontSize = 11.sp)
+
+                                                    themeOptions.forEachIndexed { index, (themeKey, details) ->
+                                                        val (name, subtitle) = details
+                                                        val selected = currentTheme == themeKey
+
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clip(RoundedCornerShape(14.dp))
+                                                                .background(if (selected) ArtSecondaryPurple else Color.Transparent)
+                                                                .clickable { viewModel.selectedTheme.value = themeKey }
+                                                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(22.dp)
+                                                                    .border(
+                                                                        width = if (selected) 2.dp else 1.5.dp,
+                                                                        color = if (selected) ArtPrimaryPurple else Color(0xFF6B7280).copy(alpha = 0.7f),
+                                                                        shape = CircleShape
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                if (selected) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(10.dp)
+                                                                            .background(ArtPrimaryPurple, CircleShape)
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            Spacer(modifier = Modifier.width(14.dp))
+
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = name,
+                                                                    color = ArtTextDark,
+                                                                    fontSize = 14.sp,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                                Text(
+                                                                    text = subtitle,
+                                                                    color = ArtGrayMuted,
+                                                                    fontSize = 12.sp,
+                                                                    modifier = Modifier.padding(top = 2.dp)
+                                                                )
+                                                            }
+                                                        }
+
+                                                        if (index < themeOptions.size - 1) {
+                                                            val nextSelected = currentTheme == themeOptions[index + 1].first
+                                                            if (!selected && !nextSelected) {
+                                                                HorizontalDivider(
+                                                                    color = ArtBorderDark.copy(alpha = 0.4f),
+                                                                    thickness = 0.8.dp,
+                                                                    modifier = Modifier.padding(horizontal = 14.dp)
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
 
+                                    // -------------------------------------------------------------
+                                    // SECTION 2: AUTO-SAVE
+                                    // -------------------------------------------------------------
                                     item {
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .widthIn(max = 680.dp)
                                         ) {
                                             Text(
-                                                "AUTO-SAVE SETTING",
-                                                fontSize = 11.sp,
+                                                text = "AUTO-SAVE",
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ArtPrimaryPurple,
-                                                letterSpacing = 1.sp
+                                                letterSpacing = 0.8.sp,
+                                                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                                             )
 
                                             Card(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(20.dp),
-                                                border = BorderStroke(1.dp, ArtBorderDark),
-                                                colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                                shape = RoundedCornerShape(22.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.6f)),
+                                                colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                                             ) {
                                                 Row(
-                                                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 16.dp, vertical = 14.dp),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(46.dp)
+                                                            .background(ArtSecondaryPurple, RoundedCornerShape(14.dp)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.CloudUpload,
+                                                            contentDescription = "Auto-save",
+                                                            tint = ArtPrimaryPurple,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                                         Text(
-                                                            text = "Auto-save Itineraries",
+                                                            text = "Auto-save itineraries",
                                                             color = ArtTextDark,
                                                             fontWeight = FontWeight.Bold,
                                                             fontSize = 14.sp
                                                         )
                                                         Text(
-                                                            text = "Automatically archive generated trip plans.",
+                                                            text = "Automatically save your generated trip plans",
                                                             color = ArtGrayMuted,
-                                                            fontSize = 11.sp,
-                                                            lineHeight = 14.sp
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.padding(top = 2.dp)
                                                         )
                                                     }
 
@@ -953,7 +1046,7 @@ fun HomeScreen(
                                                             checkedThumbColor = Color.White,
                                                             checkedTrackColor = ArtPrimaryPurple,
                                                             uncheckedThumbColor = ArtGrayMuted,
-                                                            uncheckedTrackColor = ArtCardBackground
+                                                            uncheckedTrackColor = ArtBorderDark.copy(alpha = 0.5f)
                                                         )
                                                     )
                                                 }
@@ -961,41 +1054,106 @@ fun HomeScreen(
                                         }
                                     }
 
+                                    // -------------------------------------------------------------
+                                    // SECTION 3: TRAVEL ASSISTANT TONE
+                                    // -------------------------------------------------------------
                                     item {
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .widthIn(max = 680.dp)
                                         ) {
                                             Text(
-                                                "DEFAULT TRAVEL ASSISTANT TONE",
-                                                fontSize = 11.sp,
+                                                text = "TRAVEL ASSISTANT TONE",
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ArtPrimaryPurple,
-                                                letterSpacing = 1.sp
+                                                letterSpacing = 0.8.sp,
+                                                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                                             )
 
-                                            val tones = listOf("Friendly & Helpful", "Professional Guide", "Funny & Witty", "Roast My Plan")
-                                            tones.forEach { tone ->
-                                                val selected = selectedPersonality.equals(tone, ignoreCase = true)
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .background(if (selected) ArtSecondaryPurple else ArtCardBackground, RoundedCornerShape(14.dp))
-                                                        .border(1.dp, if (selected) ArtPrimaryPurple else ArtBorderDark, RoundedCornerShape(14.dp))
-                                                        .clickable { viewModel.selectedPersonality.value = tone }
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    RadioButton(
-                                                        selected = selected,
-                                                        onClick = { viewModel.selectedPersonality.value = tone },
-                                                        colors = RadioButtonDefaults.colors(selectedColor = ArtPrimaryPurple)
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(22.dp),
+                                                border = BorderStroke(1.dp, ArtBorderDark.copy(alpha = 0.6f)),
+                                                colors = CardDefaults.cardColors(containerColor = ArtCardBackground),
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                            ) {
+                                                Column(modifier = Modifier.padding(8.dp)) {
+                                                    val tones = listOf(
+                                                        "Friendly & Helpful" to "Warm, friendly and always ready to help",
+                                                        "Professional Guide" to "Clear, accurate and professional guidance",
+                                                        "Funny & Witty" to "Light humor and playful travel tips",
+                                                        "Roast My Plan" to "Honest, bold and brutally fun feedback"
                                                     )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(tone, color = ArtTextDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+                                                    tones.forEachIndexed { index, (toneName, subtitle) ->
+                                                        val selected = selectedPersonality.equals(toneName, ignoreCase = true)
+
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clip(RoundedCornerShape(14.dp))
+                                                                .background(if (selected) ArtSecondaryPurple else Color.Transparent)
+                                                                .clickable { viewModel.selectedPersonality.value = toneName }
+                                                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(22.dp)
+                                                                    .border(
+                                                                        width = if (selected) 2.dp else 1.5.dp,
+                                                                        color = if (selected) ArtPrimaryPurple else Color(0xFF6B7280).copy(alpha = 0.7f),
+                                                                        shape = CircleShape
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                if (selected) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(10.dp)
+                                                                            .background(ArtPrimaryPurple, CircleShape)
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            Spacer(modifier = Modifier.width(14.dp))
+
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = toneName,
+                                                                    color = ArtTextDark,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 14.sp
+                                                                )
+                                                                Text(
+                                                                    text = subtitle,
+                                                                    color = ArtGrayMuted,
+                                                                    fontSize = 12.sp,
+                                                                    modifier = Modifier.padding(top = 2.dp)
+                                                                )
+                                                            }
+                                                        }
+
+                                                        if (index < tones.size - 1) {
+                                                            val nextSelected = selectedPersonality.equals(tones[index + 1].first, ignoreCase = true)
+                                                            if (!selected && !nextSelected) {
+                                                                HorizontalDivider(
+                                                                    color = ArtBorderDark.copy(alpha = 0.4f),
+                                                                    thickness = 0.8.dp,
+                                                                    modifier = Modifier.padding(horizontal = 14.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                    }
+
+                                    item {
+                                        Spacer(modifier = Modifier.height(28.dp))
                                     }
                                 }
                             }
@@ -1014,7 +1172,7 @@ fun HomeScreen(
                                         start = 16.dp,
                                         top = 16.dp,
                                         end = 16.dp,
-                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                        bottom = 48.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
@@ -1401,6 +1559,10 @@ fun HomeScreen(
                                             }
                                         }
                                     }
+
+                                    item {
+                                        Spacer(modifier = Modifier.height(28.dp))
+                                    }
                                 }
 
                                 if (showGeminiSetupModal) {
@@ -1526,7 +1688,7 @@ fun HomeScreen(
                                         start = 20.dp,
                                         top = 20.dp,
                                         end = 20.dp,
-                                        bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                                        bottom = 48.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(18.dp)
                                 ) {
@@ -2091,6 +2253,10 @@ fun HomeScreen(
                                                 color = ArtGrayMuted.copy(alpha = 0.8f)
                                             )
                                         }
+                                    }
+
+                                    item {
+                                        Spacer(modifier = Modifier.height(28.dp))
                                     }
                                 }
                             }

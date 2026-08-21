@@ -68,6 +68,7 @@ secrets {
   defaultPropertiesFileName = ".env.example"
 }
 
+
 googleServices {
   missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN
 }

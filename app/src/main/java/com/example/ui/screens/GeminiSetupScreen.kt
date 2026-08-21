@@ -265,14 +265,13 @@ private fun GeminiIntroView(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 460.dp)
+                .widthIn(max = 480.dp)
                 .padding(vertical = 12.dp)
         ) {
             // Decorative Hero Icon Card
@@ -336,14 +335,14 @@ private fun GeminiIntroView(
                         description = "Direct AI connection creates complete day-by-day travel plans in seconds.",
                         accentColor = ArtPeachGold
                     )
-                    Divider(color = ArtBorderDark.copy(alpha = 0.5f), thickness = 1.dp)
+                    HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.5f), thickness = 1.dp)
                     FeatureHighlightRow(
                         icon = Icons.Default.Savings,
                         title = "Free to Use",
                         description = "Google AI Studio offers free API keys for personal use with zero hidden fees.",
                         accentColor = ArtMintGreen
                     )
-                    Divider(color = ArtBorderDark.copy(alpha = 0.5f), thickness = 1.dp)
+                    HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.5f), thickness = 1.dp)
                     FeatureHighlightRow(
                         icon = Icons.Default.Shield,
                         title = "Private & Secure",
@@ -354,12 +353,14 @@ private fun GeminiIntroView(
             }
         }
 
-        // Action Buttons
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Action Buttons with generous bottom padding
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 460.dp)
-                .padding(vertical = 16.dp),
+                .widthIn(max = 480.dp)
+                .padding(top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
@@ -432,13 +433,12 @@ private fun GeminiWizardView(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 460.dp)
+                .widthIn(max = 480.dp)
         ) {
             // Step Progress Indicator (1..4)
             WizardStepIndicator(currentStep = currentStep, onSelectStep = onStepChange)
@@ -587,12 +587,14 @@ private fun GeminiWizardView(
             }
         }
 
-        // Action Buttons Row
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Action Buttons Row with comfortable bottom spacing
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 460.dp)
-                .padding(vertical = 16.dp),
+                .widthIn(max = 480.dp)
+                .padding(top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             when (currentStep) {
@@ -976,16 +978,15 @@ private fun GeminiSuccessView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 440.dp)
-                .padding(top = 40.dp)
+                .widthIn(max = 480.dp)
+                .padding(top = 32.dp, bottom = 16.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -1065,13 +1066,15 @@ private fun GeminiSuccessView(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
         Button(
             onClick = onStartPlanning,
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 440.dp)
+                .widthIn(max = 480.dp)
                 .height(52.dp)
-                .padding(bottom = 8.dp),
+                .padding(bottom = 48.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = ArtPrimaryPurple,
@@ -1102,16 +1105,15 @@ private fun GeminiErrorView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 440.dp)
-                .padding(top = 40.dp)
+                .widthIn(max = 480.dp)
+                .padding(top = 32.dp, bottom = 16.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -1175,11 +1177,13 @@ private fun GeminiErrorView(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 440.dp)
-                .padding(bottom = 8.dp),
+                .widthIn(max = 480.dp)
+                .padding(bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
