@@ -62,13 +62,13 @@ class TripRepository(private val tripDao: TripDao) {
         val apiKey = if (!userApiKey.isNullOrBlank()) userApiKey else throw IllegalStateException("NO_GEMINI_KEY")
 
         val personalityInstruction = when (personality) {
-            "Professional" -> """
-                TONE / PERSONALITY: Professional.
+            "Formal", "Professional" -> """
+                TONE / PERSONALITY: Formal.
                 Write in a formal, informative, and straightforward manner.
                 Provide structured, professional, and clear travel recommendations, budget assessments, and suggestions. No jokes, sarcasm, or slang.
             """.trimIndent()
-            "Friendly" -> """
-                TONE / PERSONALITY: Friendly.
+            "Casual", "Friendly" -> """
+                TONE / PERSONALITY: Casual.
                 Write in a casual, conversational, and warm tone.
                 Feel like a close travel buddy who is excited to help plan this trip. Use friendly expressions, emojis, and highly welcoming suggestions.
             """.trimIndent()
@@ -77,13 +77,16 @@ class TripRepository(private val tripDao: TripDao) {
                 Write in a playful, humorous, and witty tone.
                 Add funny comments, light jokes, witty observations, and playful banter throughout the itinerary descriptions, budget breakdowns, and tips. Keep the travel information accurate but highly entertaining.
             """.trimIndent()
-            "Roast Me" -> """
-                TONE / PERSONALITY: Roast Me (Savage and entertaining!).
+            "Roast My Plan", "Roast Me" -> """
+                TONE / PERSONALITY: Roast My Plan (Savage and entertaining!).
                 Be extremely sarcastic, sassy, and hilariously brutal. You must roast unrealistic budgets, overpacked plans, lazy styles, or questionable travel choices in a hilarious and entertaining way (e.g., 'You're trying to visit 14 places in one day. Are you travelling or speedrunning Goa?', or 'Luxury hotels with a backpacker budget? Bold strategy.').
                 Roast their travel preferences, budget, pace, and choices inside the 'explanation' fields, 'description' of hotels/restaurants, 'foodSafetyTips', 'localTips', and 'thingsToAvoid'.
                 IMPORTANT: The actual names, routes, prices, and locations must remain 100% accurate, useful, and high quality. Only roast their choices and writing tone in a playful, savage, and highly entertaining way.
             """.trimIndent()
-            else -> ""
+            else -> """
+                TONE / PERSONALITY: Casual.
+                Write in a casual, conversational, and warm tone.
+            """.trimIndent()
         }
 
         val prompt = """
@@ -201,6 +204,13 @@ class TripRepository(private val tripDao: TripDao) {
             DO NOT output any markdown tags like ```json or ``` surrounding your response. Return ONLY raw valid JSON text.
         """.trimIndent()
 
+        val systemInstructionText = when (personality) {
+            "Formal", "Professional" -> "You are a formal, highly professional, and detailed AI travel planner. You generate structured, professional-grade day-by-day travel plans in raw JSON format only. Never return explanations outside the JSON block. Your tone is formal, objective, and clear."
+            "Funny" -> "You are a witty, playful, and humorous AI travel planner. You generate professional-grade day-by-day travel plans in raw JSON format only with funny comments and light travel humor. Never return explanations outside the JSON block. Your tone is playful, entertaining, and witty."
+            "Roast My Plan", "Roast Me" -> "You are a hilariously sarcastic, savage, and honest AI travel planner. You generate accurate, high-quality day-by-day travel plans in raw JSON format only, while brutally and comically roasting questionable travel choices, budgets, and plans. Never return explanations outside the JSON block."
+            else -> "You are a warm, friendly, and helpful AI travel planner. You generate professional-grade, beautifully formatted day-by-day travel plans in raw JSON format only. Never return explanations outside the JSON block. Your tone is warm, welcoming, and conversational like a travel buddy."
+        }
+
         val request = GenerateContentRequest(
             contents = listOf(
                 Content(
@@ -212,7 +222,7 @@ class TripRepository(private val tripDao: TripDao) {
                 temperature = 0.5f
             ),
             systemInstruction = Content(
-                parts = listOf(Part(text = "You are a playful, highly skilled, and detailed AI travel planner. You generate professional-grade, beautifully formatted day-by-day travel plans in raw JSON format only. Never return explanations outside the JSON block. Your tone is energetic, knowledgeable, and excited."))
+                parts = listOf(Part(text = systemInstructionText))
             )
         )
 

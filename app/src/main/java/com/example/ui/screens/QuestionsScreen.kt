@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import com.example.ui.theme.*
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.viewmodel.TripViewModel
@@ -59,6 +60,8 @@ fun QuestionsScreen(
     val userApiKey by viewModel.userApiKey.collectAsState()
 
     var showGeminiSetupDialog by remember { mutableStateOf(false) }
+    var showPersonalityDialog by remember { mutableStateOf(false) }
+    val normalizedTone = TripViewModel.normalizeTone(selectedPersonality)
 
     Box(
         modifier = Modifier
@@ -109,8 +112,6 @@ fun QuestionsScreen(
                 }
 
                 // Itinerary Personality Selector
-                var showPersonalityDialog by remember { mutableStateOf(false) }
-
                 Box(
                     modifier = Modifier
                         .size(44.dp)
@@ -121,11 +122,11 @@ fun QuestionsScreen(
                         .testTag("itinerary_personality_selector"),
                     contentAlignment = Alignment.Center
                 ) {
-                    val personalityIcon = when (selectedPersonality) {
-                        "Professional" -> Icons.Default.BusinessCenter
-                        "Friendly" -> Icons.Default.SentimentSatisfiedAlt
+                    val personalityIcon = when (normalizedTone) {
+                        "Formal" -> Icons.Default.BusinessCenter
+                        "Casual" -> Icons.Default.SentimentSatisfiedAlt
                         "Funny" -> Icons.Default.SentimentVerySatisfied
-                        "Roast Me" -> Icons.Default.LocalFireDepartment
+                        "Roast My Plan" -> Icons.Default.LocalFireDepartment
                         else -> Icons.Default.AutoAwesome
                     }
                     Icon(
@@ -181,7 +182,7 @@ fun QuestionsScreen(
                                     )
                                 }
                                 Text(
-                                    text = "AI Response Style",
+                                    text = "Travel Assistant Style",
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Black,
                                     color = ArtTextDark
@@ -201,19 +202,19 @@ fun QuestionsScreen(
                                 )
 
                                 val personalities = listOf(
-                                    Triple("Professional", "Formal & informative. Clear, straightforward travel recommendations.", Icons.Default.BusinessCenter),
-                                    Triple("Friendly", "Casual & conversational. Feels like a travel buddy planning with you.", Icons.Default.SentimentSatisfiedAlt),
-                                    Triple("Funny", "Playful & humorous. Adds funny remarks and light jokes throughout.", Icons.Default.SentimentVerySatisfied),
-                                    Triple("Roast Me", "Savage & sassy. Roasts questionable budget plans or overpacked trips!", Icons.Default.LocalFireDepartment)
+                                    Triple("Formal", "Clear, structured, and professional travel guidance.", Icons.Default.BusinessCenter),
+                                    Triple("Casual", "Warm, friendly, and conversational travel companion.", Icons.Default.SentimentSatisfiedAlt),
+                                    Triple("Funny", "Playful & humorous. Adds witty comments and light jokes throughout.", Icons.Default.SentimentVerySatisfied),
+                                    Triple("Roast My Plan", "Savage & sassy. Roasts questionable budget plans or overpacked trips!", Icons.Default.LocalFireDepartment)
                                 )
 
                                 personalities.forEach { (name, desc, icon) ->
-                                    val isSelected = selectedPersonality == name
+                                    val isSelected = normalizedTone.equals(name, ignoreCase = true)
                                     val accentColor = when (name) {
-                                        "Professional" -> ArtSoftLavender
-                                        "Friendly" -> ArtMintGreen
+                                        "Formal" -> ArtSoftLavender
+                                        "Casual" -> ArtMintGreen
                                         "Funny" -> ArtPeachGold
-                                        "Roast Me" -> ArtTertiaryPink
+                                        "Roast My Plan" -> ArtTertiaryPink
                                         else -> ArtSoftLavender
                                     }
 
@@ -229,7 +230,7 @@ fun QuestionsScreen(
                                                 ArtBorderDark,
                                                 RoundedCornerShape(16.dp)
                                             )
-                                            .clickable { viewModel.selectedPersonality.value = name }
+                                            .clickable { viewModel.selectTone(name) }
                                             .padding(14.dp)
                                             .testTag("personality_option_$name"),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -949,42 +950,91 @@ fun QuestionsScreen(
                         .navigationBarsPadding(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Model Indicator / Quick Switch Row
+                    // Travel Assistant Style and AI Model row
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(if (userApiKey.isNotBlank()) 1f else 0.5f)
-                            .clickable(enabled = userApiKey.isNotBlank()) { showModelPicker = true },
-                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Travel Assistant Style Chip
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = ArtSecondaryPurple,
-                            border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f))
+                            shape = RoundedCornerShape(10.dp),
+                            color = ArtCardBackground,
+                            border = BorderStroke(1.5.dp, ArtBorderDark),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { showPersonalityDialog = true }
+                                .testTag("planning_travel_assistant_style")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = "ASSISTANT STYLE",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArtGrayMuted,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = "$normalizedTone ✓",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ArtPrimaryPurple,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Change Tone",
+                                    tint = ArtPrimaryPurple,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+
+                        // Model Selector Chip
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = ArtCardBackground,
+                            border = BorderStroke(1.5.dp, ArtBorderDark),
+                            modifier = Modifier
+                                .weight(1f)
+                                .alpha(if (userApiKey.isNotBlank()) 1f else 0.5f)
+                                .clickable(enabled = userApiKey.isNotBlank()) { showModelPicker = true }
+                                .testTag("planning_ai_model_chip")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = "AI MODEL",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArtGrayMuted,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = currentModel.replace("gemini-", "").replace("-preview", "").uppercase(),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ArtTextDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Icon(
                                     imageVector = Icons.Default.Tune,
-                                    contentDescription = null,
-                                    tint = ArtPrimaryPurple,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "AI Model: ${currentModel.replace("gemini-", "").replace("-preview", "").uppercase()}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ArtPrimaryPurple
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = ArtPrimaryPurple,
-                                    modifier = Modifier.size(16.dp)
+                                    contentDescription = "Select Model",
+                                    tint = ArtTextDark,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }

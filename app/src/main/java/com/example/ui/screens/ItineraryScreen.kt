@@ -277,6 +277,7 @@ fun TripAskChatbot(
     var currentAnswer by remember { mutableStateOf<String?>(null) }
     var isChatLoading by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
+    var isOfflineError by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -290,8 +291,18 @@ fun TripAskChatbot(
 
         currentQuestion = trimmedQuestion
         currentAnswer = null
-        isChatLoading = true
         hasError = false
+
+        if (!viewModel.networkMonitor.isConnected()) {
+            isChatLoading = false
+            hasError = true
+            isOfflineError = true
+            currentAnswer = "TripAsk needs an internet connection."
+            return
+        }
+
+        isOfflineError = false
+        isChatLoading = true
 
         val apiKey = viewModel.getGroqApiKey()
 
@@ -356,8 +367,13 @@ fun TripAskChatbot(
                     hasError = true
                     currentAnswer = "TripAsk is temporarily unavailable. Please try again."
                 }
+            } catch (e: java.io.IOException) {
+                hasError = true
+                isOfflineError = true
+                currentAnswer = "TripAsk needs an internet connection."
             } catch (e: Exception) {
                 hasError = true
+                isOfflineError = false
                 currentAnswer = "TripAsk is temporarily unavailable. Please try again."
             } finally {
                 isChatLoading = false
@@ -665,9 +681,11 @@ fun TripAskChatbot(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .border(2.dp, ArtBorderDark, RoundedCornerShape(16.dp)),
+                                    .border(2.dp, if (hasError) Color(0xFFDC2626).copy(alpha = 0.6f) else ArtBorderDark, RoundedCornerShape(16.dp)),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = ArtSecondaryPurple)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (hasError) (if (LocalTripColors.current.isDark) Color(0xFF2C1618) else Color(0xFFFFF1F2)) else ArtSecondaryPurple
+                                )
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -681,38 +699,40 @@ fun TripAskChatbot(
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                imageVector = Icons.Default.AutoAwesome,
+                                                imageVector = if (isOfflineError) Icons.Default.WifiOff else if (hasError) Icons.Default.Warning else Icons.Default.AutoAwesome,
                                                 contentDescription = null,
-                                                tint = ArtPrimaryPurple,
+                                                tint = if (hasError) Color(0xFFDC2626) else ArtPrimaryPurple,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "Answer",
+                                                text = if (isOfflineError) "You're offline" else if (hasError) "Unavailable" else "Answer",
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Black,
-                                                color = ArtTextDark
+                                                color = if (hasError) Color(0xFFDC2626) else ArtTextDark
                                             )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(
-                                                        if (LocalTripColors.current.isDark) Color(0xFF1B3527) else Color(0xFFE8F5E9),
-                                                        RoundedCornerShape(6.dp)
+                                            if (!hasError) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(
+                                                            if (LocalTripColors.current.isDark) Color(0xFF1B3527) else Color(0xFFE8F5E9),
+                                                            RoundedCornerShape(6.dp)
+                                                        )
+                                                        .border(
+                                                            1.dp,
+                                                            if (LocalTripColors.current.isDark) Color(0xFF81C784).copy(alpha = 0.5f) else Color(0xFF2E7D32).copy(alpha = 0.5f),
+                                                            RoundedCornerShape(6.dp)
+                                                        )
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "New",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (LocalTripColors.current.isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
                                                     )
-                                                    .border(
-                                                        1.dp,
-                                                        if (LocalTripColors.current.isDark) Color(0xFF81C784).copy(alpha = 0.5f) else Color(0xFF2E7D32).copy(alpha = 0.5f),
-                                                        RoundedCornerShape(6.dp)
-                                                    )
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "New",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (LocalTripColors.current.isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-                                                )
+                                                }
                                             }
                                         }
 
@@ -741,6 +761,27 @@ fun TripAskChatbot(
                                         color = ArtTextDark,
                                         lineHeight = 19.sp
                                     )
+
+                                    if (hasError && currentQuestion != null) {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Button(
+                                            onClick = { currentQuestion?.let { handleSend(it) } },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = ArtPrimaryPurple,
+                                                contentColor = Color.White
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Retry", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        }
+                                    }
                                 }
                             }
                         } else {
@@ -992,16 +1033,16 @@ fun ErrorScreen(
     val isNetwork = errorKind == com.example.viewmodel.ErrorKind.NETWORK
 
     val errorTitle = when {
+        isNetwork -> "You're offline"
         isInvalidKey -> "Invalid Gemini API key"
         isRateLimit -> "Gemini rate limit reached"
-        isNetwork -> "Network Connection Issue"
         else -> "Couldn't generate this trip"
     }
 
     val errorDescription = when {
+        isNetwork -> "Connect to the internet to generate your trip."
         isInvalidKey -> "Please check your API key and try again."
         isRateLimit -> "Please wait a moment or use your own API key with available quota."
-        isNetwork -> "Could not connect to Gemini servers. Please check your internet connection."
         message.isNotBlank() -> message
         else -> "The travel planner couldn't complete the request. Please try again or re-connect your key."
     }
@@ -1029,14 +1070,14 @@ fun ErrorScreen(
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .background(if (isInvalidKey || isRateLimit) Color(0xFFFEE2E2) else ArtTertiaryPink, CircleShape)
-                        .border(1.5.dp, if (isInvalidKey || isRateLimit) Color(0xFFDC2626) else ArtBorderDark, CircleShape),
+                        .background(if (isInvalidKey || isRateLimit || isNetwork) Color(0xFFFEE2E2) else ArtTertiaryPink, CircleShape)
+                        .border(1.5.dp, if (isInvalidKey || isRateLimit || isNetwork) Color(0xFFDC2626) else ArtBorderDark, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isInvalidKey) Icons.Default.KeyOff else if (isRateLimit) Icons.Default.HourglassTop else Icons.Default.Warning,
+                        imageVector = if (isNetwork) Icons.Default.WifiOff else if (isInvalidKey) Icons.Default.KeyOff else if (isRateLimit) Icons.Default.HourglassTop else Icons.Default.Warning,
                         contentDescription = "Error",
-                        tint = if (isInvalidKey || isRateLimit) Color(0xFFDC2626) else ArtTextDark,
+                        tint = if (isInvalidKey || isRateLimit || isNetwork) Color(0xFFDC2626) else ArtTextDark,
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -1057,34 +1098,36 @@ fun ErrorScreen(
                     lineHeight = 18.sp
                 )
 
-                // Active model badge
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = ArtSecondaryPurple,
-                    border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.4f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Active model badge (only if not network offline)
+                if (!isNetwork) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = ArtSecondaryPurple,
+                        border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.4f))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = null,
-                            tint = ArtPrimaryPurple,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "Model used: $activeModel",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ArtPrimaryPurple
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = ArtPrimaryPurple,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Model used: $activeModel",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ArtPrimaryPurple
+                            )
+                        }
                     }
                 }
 
                 // Quick alternative model selector if rate limit or general error
-                if (!isInvalidKey) {
+                if (!isInvalidKey && !isNetwork) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1158,7 +1201,45 @@ fun ErrorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (isInvalidKey || isRateLimit) {
+                    if (isNetwork) {
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ArtPrimaryPurple,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Retry", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, ArtBorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ArtTextDark)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Back to Planning", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    } else if (isInvalidKey || isRateLimit) {
                         Button(
                             onClick = { showGeminiSetupDialog = true },
                             modifier = Modifier

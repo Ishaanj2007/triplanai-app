@@ -6,12 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.TripEntity
 import com.example.data.model.TripPlan
+import com.example.data.remote.AppConfigState
 import com.example.data.remote.GroqChatRequest
 import com.example.data.remote.GroqMessage
 import com.example.data.remote.GroqRetrofitClient
+import com.example.data.remote.RemoteConfigManager
 import com.example.data.remote.RetrofitClient
 import com.example.repository.TripRepository
 import com.example.BuildConfig
+import com.example.util.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -94,11 +97,51 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         return ""
     }
 
+    companion object {
+        fun normalizeTone(tone: String?): String {
+            return when (tone?.trim()?.lowercase()) {
+                "formal", "professional", "professional guide" -> "Formal"
+                "funny", "funny & witty", "witty" -> "Funny"
+                "roast my plan", "roast me", "roast" -> "Roast My Plan"
+                else -> "Casual"
+            }
+        }
+    }
+
     val groqApiKey = MutableStateFlow(getGroqApiKey())
     val autoSaveEnabled = MutableStateFlow(sharedPrefs.getBoolean("auto_save_enabled", false))
     val selectedTheme = MutableStateFlow(sharedPrefs.getInt("selected_theme", 0))
-    val selectedPersonality = MutableStateFlow(sharedPrefs.getString("selected_personality", "Friendly") ?: "Friendly")
+    val selectedPersonality = MutableStateFlow(normalizeTone(sharedPrefs.getString("selected_personality", "Casual")))
     val selectedModel = MutableStateFlow(sharedPrefs.getString("selected_gemini_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
+
+    // Network Connectivity Monitor
+    val networkMonitor = NetworkMonitor(application)
+    val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+
+    // Remote Config & Update Management
+    val remoteConfigManager = RemoteConfigManager(application)
+    val appConfigState: StateFlow<AppConfigState> = remoteConfigManager.configState
+    val isUpdateDialogDismissed = MutableStateFlow(false)
+    val showUpdateDialogExplicitly = MutableStateFlow(false)
+
+    fun dismissUpdateDialog() {
+        isUpdateDialogDismissed.value = true
+        showUpdateDialogExplicitly.value = false
+    }
+
+    fun openUpdateDialog() {
+        showUpdateDialogExplicitly.value = true
+    }
+
+    fun checkForUpdates(onComplete: ((Boolean) -> Unit)? = null) {
+        remoteConfigManager.fetchAndActivate(onComplete)
+    }
+
+    fun selectTone(tone: String) {
+        val normalized = normalizeTone(tone)
+        selectedPersonality.value = normalized
+        sharedPrefs.edit().putString("selected_personality", normalized).apply()
+    }
 
     fun selectGeminiModel(modelId: String) {
         sharedPrefs.edit().putString("selected_gemini_model", modelId).apply()
@@ -108,6 +151,9 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val database = AppDatabase.getDatabase(application)
         repository = TripRepository(database.tripDao())
+
+        // Initial non-blocking background fetch & activation of Remote Config
+        remoteConfigManager.fetchAndActivate()
         
         viewModelScope.launch {
             selectedTheme.collect { theme ->
@@ -117,7 +163,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             selectedPersonality.collect { personality ->
-                sharedPrefs.edit().putString("selected_personality", personality).apply()
+                val normalized = normalizeTone(personality)
+                sharedPrefs.edit().putString("selected_personality", normalized).apply()
             }
         }
     }
@@ -141,6 +188,10 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testGeminiConnection() {
         viewModelScope.launch {
+            if (!networkMonitor.isConnected()) {
+                testConnectionStatus.value = "ERROR: You're offline. Connect to the internet."
+                return@launch
+            }
             isTestingConnection.value = true
             testConnectionStatus.value = "Testing Gemini connection..."
             try {
@@ -192,6 +243,10 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testGroqConnection() {
         viewModelScope.launch {
+            if (!networkMonitor.isConnected()) {
+                groqTestStatus.value = "ERROR: You're offline. Connect to the internet."
+                return@launch
+            }
             isTestingGroq.value = true
             groqTestStatus.value = "Testing Groq connection..."
             val key = getGroqApiKey()
@@ -245,6 +300,10 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             val cleanKey = key.trim()
             if (cleanKey.isBlank()) {
                 onResult(false, "Key cannot be empty.")
+                return@launch
+            }
+            if (!networkMonitor.isConnected()) {
+                onResult(false, "You're offline. Connect to the internet and try again.")
                 return@launch
             }
             try {
@@ -385,9 +444,17 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startTripGeneration() {
         viewModelScope.launch {
+            if (!networkMonitor.isConnected()) {
+                _planningState.value = PlanningState.Error(
+                    message = "Connect to the internet to generate your trip.",
+                    errorKind = ErrorKind.NETWORK
+                )
+                return@launch
+            }
+
             if (userApiKey.value.isBlank()) {
                 _planningState.value = PlanningState.Error(
-                    message = "Your saved Gemini API key could not be used.",
+                    message = "Connect your Gemini API key to generate your itinerary.",
                     errorKind = ErrorKind.INVALID_KEY
                 )
                 return@launch
@@ -407,7 +474,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                     specialRequirements = specialRequirements.value,
                     model = selectedModel.value,
                     userApiKey = userApiKey.value,
-                    personality = selectedPersonality.value
+                    personality = normalizeTone(selectedPersonality.value)
                 )
                 _activeTripPlan.value = plan
                 _planningState.value = PlanningState.Success(plan)
@@ -418,7 +485,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: java.io.IOException) {
                 _planningState.value = PlanningState.Error(
-                    message = "Check your internet connection and try again.",
+                    message = "Connect to the internet to generate your trip.",
                     errorKind = ErrorKind.NETWORK
                 )
             } catch (e: retrofit2.HttpException) {
@@ -426,25 +493,25 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 when (code) {
                     429 -> {
                         _planningState.value = PlanningState.Error(
-                            message = "Your Gemini project has reached its current usage limit. Please try again later or check your Gemini usage.",
+                            message = "Gemini couldn't generate your itinerary right now. Please try again.",
                             errorKind = ErrorKind.RATE_LIMIT
                         )
                     }
                     400, 401, 403 -> {
                         _planningState.value = PlanningState.Error(
-                            message = "Your saved Gemini API key could not be used.",
+                            message = "Your Gemini API key isn't working. Please check the key and try again.",
                             errorKind = ErrorKind.INVALID_KEY
                         )
                     }
                     500, 502, 503, 504 -> {
                         _planningState.value = PlanningState.Error(
-                            message = "Gemini is temporarily unavailable. Please try again in a few moments.",
+                            message = "Gemini couldn't generate your itinerary right now. Please try again.",
                             errorKind = ErrorKind.RATE_LIMIT
                         )
                     }
                     else -> {
                         _planningState.value = PlanningState.Error(
-                            message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                            message = "Gemini couldn't generate your itinerary right now. Please try again.",
                             errorKind = ErrorKind.GENERAL
                         )
                     }
@@ -452,18 +519,18 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: IllegalStateException) {
                 if (e.message == "NO_GEMINI_KEY") {
                     _planningState.value = PlanningState.Error(
-                        message = "Your saved Gemini API key could not be used.",
+                        message = "Connect your Gemini API key to generate your itinerary.",
                         errorKind = ErrorKind.INVALID_KEY
                     )
                 } else {
                     _planningState.value = PlanningState.Error(
-                        message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                        message = "Gemini couldn't generate your itinerary right now. Please try again.",
                         errorKind = ErrorKind.GENERAL
                     )
                 }
             } catch (e: Exception) {
                 _planningState.value = PlanningState.Error(
-                    message = "A temporary issue occurred while preparing your travel plan. Please try again.",
+                    message = "Gemini couldn't generate your itinerary right now. Please try again.",
                     errorKind = ErrorKind.GENERAL
                 )
             }

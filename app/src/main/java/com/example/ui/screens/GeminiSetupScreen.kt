@@ -492,9 +492,9 @@ private fun GeminiWizardView(
                             StepVisualMockup(
                                 badgeText = "Ready to Copy",
                                 icon = Icons.Default.ContentCopy,
-                                title = "AIzaSy••••••••••••••••",
+                                title = "Your API Key",
                                 subtitle = "Tap 'Copy' next to your key",
-                                description = "Your key begins with 'AIzaSy' and is ready to connect.",
+                                description = "Your key is ready to connect.",
                                 accentColor = ArtMintGreen
                             )
                         }
@@ -551,7 +551,7 @@ private fun GeminiWizardView(
                                 OutlinedTextField(
                                     value = apiKey,
                                     onValueChange = onApiKeyChange,
-                                    placeholder = { Text("Paste AIzaSy... key here", fontSize = 13.sp, color = ArtGrayMuted) },
+                                    placeholder = { Text("Paste your Gemini API key", fontSize = 13.sp, color = ArtGrayMuted) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
                                     visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),

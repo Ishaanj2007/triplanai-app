@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.example.BuildConfig
 import com.example.data.local.TripEntity
 import com.example.ui.theme.*
 import com.example.viewmodel.TripViewModel
@@ -768,8 +769,6 @@ fun HomeScreen(
         val groqTestStatus by viewModel.groqTestStatus.collectAsState()
         val isTestingGroq by viewModel.isTestingGroq.collectAsState()
 
-        var selectedSettingsTab by remember { mutableStateOf(1) }
-
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { showSettingsDialog = false },
             properties = androidx.compose.ui.window.DialogProperties(
@@ -1081,21 +1080,22 @@ fun HomeScreen(
                                             ) {
                                                 Column(modifier = Modifier.padding(8.dp)) {
                                                     val tones = listOf(
-                                                        "Friendly & Helpful" to "Warm, friendly and always ready to help",
-                                                        "Professional Guide" to "Clear, accurate and professional guidance",
-                                                        "Funny & Witty" to "Light humor and playful travel tips",
+                                                        "Formal" to "Clear, structured and professional guidance",
+                                                        "Casual" to "Warm, friendly and conversational travel buddy",
+                                                        "Funny" to "Light humor, playful tips and witty remarks",
                                                         "Roast My Plan" to "Honest, bold and brutally fun feedback"
                                                     )
 
                                                     tones.forEachIndexed { index, (toneName, subtitle) ->
-                                                        val selected = selectedPersonality.equals(toneName, ignoreCase = true)
+                                                        val normalizedCurrent = TripViewModel.normalizeTone(selectedPersonality)
+                                                        val selected = normalizedCurrent.equals(toneName, ignoreCase = true)
 
                                                         Row(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
                                                                 .clip(RoundedCornerShape(14.dp))
                                                                 .background(if (selected) ArtSecondaryPurple else Color.Transparent)
-                                                                .clickable { viewModel.selectedPersonality.value = toneName }
+                                                                .clickable { viewModel.selectTone(toneName) }
                                                                 .padding(horizontal = 14.dp, vertical = 13.dp),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
@@ -1276,10 +1276,10 @@ fun HomeScreen(
                                                 )
 
                                                 if (userKeyVal.isNotBlank()) {
-                                                    val maskedKey = if (userKeyVal.length > 8) {
-                                                        "${userKeyVal.take(4)}••••••••••••${userKeyVal.takeLast(4)}"
+                                                    val maskedKey = if (userKeyVal.length > 4) {
+                                                        "************${userKeyVal.takeLast(4)}"
                                                     } else {
-                                                        "••••••••••••"
+                                                        "************"
                                                     }
 
                                                     Box(
@@ -1297,21 +1297,10 @@ fun HomeScreen(
                                                             Column(modifier = Modifier.weight(1f)) {
                                                                 Text("SAVED ON THIS DEVICE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = ArtGrayMuted)
                                                                 Text(
-                                                                    text = if (showRevealedGeminiKey) userKeyVal else maskedKey,
+                                                                    text = maskedKey,
                                                                     fontSize = 12.sp,
                                                                     fontWeight = FontWeight.Bold,
                                                                     color = ArtTextDark
-                                                                )
-                                                            }
-                                                            IconButton(
-                                                                onClick = { showRevealedGeminiKey = !showRevealedGeminiKey },
-                                                                modifier = Modifier.size(32.dp)
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = if (showRevealedGeminiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                                    contentDescription = if (showRevealedGeminiKey) "Hide key" else "Show key",
-                                                                    tint = ArtGrayMuted,
-                                                                    modifier = Modifier.size(16.dp)
                                                                 )
                                                             }
                                                         }
@@ -1693,7 +1682,7 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(18.dp)
                                 ) {
                                     item {
-                                        // 1. DEVELOPER SECTION
+                                        // 1. ABOUT THE CREATOR
                                         Card(
                                             modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(24.dp),
@@ -1715,7 +1704,7 @@ fun HomeScreen(
                                                         modifier = Modifier.size(18.dp)
                                                     )
                                                     Text(
-                                                        text = "DEVELOPER",
+                                                        text = "ABOUT THE CREATOR",
                                                         fontWeight = FontWeight.Bold,
                                                         fontSize = 11.sp,
                                                         color = ArtPrimaryPurple,
@@ -1749,14 +1738,14 @@ fun HomeScreen(
                                                             color = ArtTextDark
                                                         )
                                                         Text(
-                                                            text = "Creator & Developer of TriplanAi",
+                                                            text = "Creator & Developer of TriplanAI",
                                                             fontSize = 13.sp,
                                                             color = ArtGrayMuted
                                                         )
                                                     }
                                                 }
 
-                                                // Responsive 2x2 Grid of compact social/contact buttons
+                                                // Responsive social/contact buttons
                                                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                                                     val isNarrow = maxWidth < 340.dp
 
@@ -1776,14 +1765,6 @@ fun HomeScreen(
                                                             icon = Icons.Default.Code,
                                                             accentColor = Color(0xFF333333),
                                                             bgColor = ArtSecondaryPurple
-                                                        ),
-                                                        SocialContactItem(
-                                                            platform = "WhatsApp",
-                                                            handle = "@ishaan_jadhav",
-                                                            uri = "https://wa.me/ishaan_jadhav",
-                                                            icon = Icons.Default.Chat,
-                                                            accentColor = Color(0xFF16A34A),
-                                                            bgColor = Color(0xFFDCFCE7)
                                                         ),
                                                         SocialContactItem(
                                                             platform = "Email",
@@ -1842,31 +1823,16 @@ fun HomeScreen(
                                                                     }
                                                                 )
                                                             }
-                                                            Row(
-                                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                                modifier = Modifier.fillMaxWidth()
-                                                            ) {
-                                                                DeveloperContactButton(
-                                                                    contact = contacts[2],
-                                                                    modifier = Modifier.weight(1f),
-                                                                    onClick = {
-                                                                        try {
-                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[2].uri))
-                                                                            context.startActivity(intent)
-                                                                        } catch (e: Exception) {}
-                                                                    }
-                                                                )
-                                                                DeveloperContactButton(
-                                                                    contact = contacts[3],
-                                                                    modifier = Modifier.weight(1f),
-                                                                    onClick = {
-                                                                        try {
-                                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[3].uri))
-                                                                            context.startActivity(intent)
-                                                                        } catch (e: Exception) {}
-                                                                    }
-                                                                )
-                                                            }
+                                                            DeveloperContactButton(
+                                                                contact = contacts[2],
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                onClick = {
+                                                                    try {
+                                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contacts[2].uri))
+                                                                        context.startActivity(intent)
+                                                                    } catch (e: Exception) {}
+                                                                }
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -1875,7 +1841,190 @@ fun HomeScreen(
                                     }
 
                                     item {
-                                        // 2. ABOUT TRIPLANAI
+                                        // 2. SUPPORT TRIPLANAI
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
+                                            shape = RoundedCornerShape(24.dp),
+                                            border = BorderStroke(1.dp, ArtBorderDark),
+                                            colors = CardDefaults.cardColors(containerColor = ArtCardBackground)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(20.dp),
+                                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "☕",
+                                                        fontSize = 15.sp
+                                                    )
+                                                    Text(
+                                                        text = "SUPPORT TRIPLANAI",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp,
+                                                        color = ArtPrimaryPurple,
+                                                        letterSpacing = 1.2.sp
+                                                    )
+                                                }
+
+                                                Text(
+                                                    text = "☕ Support TriplanAI",
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ArtTextDark
+                                                )
+
+                                                Text(
+                                                    text = "Enjoying the app?\n\nYour support helps me continue improving TriplanAI, AI features, and future updates.",
+                                                    fontSize = 13.sp,
+                                                    color = ArtGrayMuted,
+                                                    lineHeight = 19.sp
+                                                )
+
+                                                // Clean UPI ID badge container
+                                                Surface(
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = ArtSecondaryPurple.copy(alpha = 0.45f),
+                                                    border = BorderStroke(1.dp, ArtBorderDark),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = "UPI ID",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = ArtGrayMuted,
+                                                                letterSpacing = 0.8.sp
+                                                            )
+                                                            Text(
+                                                                text = "9967973800@ybl",
+                                                                fontSize = 14.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = ArtTextDark
+                                                            )
+                                                        }
+
+                                                        TextButton(
+                                                            onClick = {
+                                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                                val clip = android.content.ClipData.newPlainText("UPI ID", "9967973800@ybl")
+                                                                clipboard.setPrimaryClip(clip)
+                                                                android.widget.Toast.makeText(context, "UPI ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                            colors = ButtonDefaults.textButtonColors(
+                                                                containerColor = ArtPrimaryPurple.copy(alpha = 0.12f),
+                                                                contentColor = ArtPrimaryPurple
+                                                            )
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.ContentCopy,
+                                                                contentDescription = "Copy",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text(
+                                                                text = "Copy",
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // Primary Button: Support via UPI
+                                                Button(
+                                                    onClick = {
+                                                        try {
+                                                            val upiUri = Uri.parse("upi://pay?pa=9967973800@ybl&pn=Ishaan&cu=INR")
+                                                            val upiIntent = Intent(Intent.ACTION_VIEW, upiUri)
+                                                            context.startActivity(upiIntent)
+                                                        } catch (e: Exception) {
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                "No UPI app found. You can copy the UPI ID and pay manually.",
+                                                                android.widget.Toast.LENGTH_LONG
+                                                            ).show()
+                                                        }
+                                                    },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(48.dp)
+                                                        .testTag("support_upi_button"),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = ArtPrimaryPurple,
+                                                        contentColor = Color.White
+                                                    )
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.AccountBalance,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            text = "Support via UPI 🇮🇳",
+                                                            fontSize = 14.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+
+                                                // Secondary Small Action: Copy UPI ID
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                        val clip = android.content.ClipData.newPlainText("UPI ID", "9967973800@ybl")
+                                                        clipboard.setPrimaryClip(clip)
+                                                        android.widget.Toast.makeText(context, "UPI ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(42.dp)
+                                                        .testTag("copy_upi_button"),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    border = BorderStroke(1.2.dp, ArtBorderDark),
+                                                    colors = ButtonDefaults.outlinedButtonColors(
+                                                        contentColor = ArtTextDark
+                                                    )
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.ContentCopy,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(15.dp),
+                                                            tint = ArtPrimaryPurple
+                                                        )
+                                                        Text(
+                                                            text = "Copy UPI ID",
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    item {
+                                        // 3. ABOUT TRIPLANAI
                                         Card(
                                             modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
                                             shape = RoundedCornerShape(24.dp),
@@ -1930,7 +2079,7 @@ fun HomeScreen(
                                                         border = BorderStroke(1.dp, ArtPrimaryPurple.copy(alpha = 0.3f))
                                                     ) {
                                                         Text(
-                                                            text = "Version 2.0.1",
+                                                            text = "Version ${BuildConfig.VERSION_NAME}",
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = ArtPrimaryPurple,
@@ -1952,6 +2101,131 @@ fun HomeScreen(
                                                     color = ArtGrayMuted,
                                                     lineHeight = 19.sp
                                                 )
+
+                                                // CHECK FOR UPDATES SECTION
+                                                val appConfigState by viewModel.appConfigState.collectAsState()
+                                                val isUpdateAvailable = viewModel.remoteConfigManager.isUpdateAvailable()
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = ArtCardBackground,
+                                                    border = BorderStroke(1.5.dp, ArtBorderDark),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .testTag("check_for_updates_card")
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(16.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                                modifier = Modifier.weight(1f)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(38.dp)
+                                                                        .background(ArtSecondaryPurple, CircleShape)
+                                                                        .border(1.dp, ArtPrimaryPurple.copy(alpha = 0.4f), CircleShape),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = if (isUpdateAvailable) Icons.Default.SystemUpdate else Icons.Default.CheckCircle,
+                                                                        contentDescription = null,
+                                                                        tint = if (isUpdateAvailable) ArtPrimaryPurple else Color(0xFF16A34A),
+                                                                        modifier = Modifier.size(20.dp)
+                                                                    )
+                                                                }
+                                                                Column {
+                                                                    Text(
+                                                                        text = "App Updates",
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 14.sp,
+                                                                        color = ArtTextDark
+                                                                    )
+                                                                    Text(
+                                                                        text = if (isUpdateAvailable) "Update v${appConfigState.latestVersion} available" else "Current Version: v${BuildConfig.VERSION_NAME}",
+                                                                        fontSize = 11.sp,
+                                                                        color = if (isUpdateAvailable) ArtPrimaryPurple else ArtGrayMuted,
+                                                                        fontWeight = if (isUpdateAvailable) FontWeight.Bold else FontWeight.Normal
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            if (isUpdateAvailable) {
+                                                                Button(
+                                                                    onClick = { viewModel.openUpdateDialog() },
+                                                                    shape = RoundedCornerShape(10.dp),
+                                                                    colors = ButtonDefaults.buttonColors(
+                                                                        containerColor = ArtPrimaryPurple,
+                                                                        contentColor = Color.White
+                                                                    ),
+                                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                                    modifier = Modifier
+                                                                        .height(36.dp)
+                                                                        .testTag("about_update_now_button")
+                                                                ) {
+                                                                    Text("Update", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                                }
+                                                            } else {
+                                                                OutlinedButton(
+                                                                    onClick = { viewModel.checkForUpdates() },
+                                                                    shape = RoundedCornerShape(10.dp),
+                                                                    border = BorderStroke(1.2.dp, ArtBorderDark),
+                                                                    enabled = !appConfigState.isCheckingForUpdate,
+                                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                                    modifier = Modifier
+                                                                        .height(36.dp)
+                                                                        .testTag("check_for_updates_button")
+                                                                ) {
+                                                                    if (appConfigState.isCheckingForUpdate) {
+                                                                        CircularProgressIndicator(
+                                                                            modifier = Modifier.size(14.dp),
+                                                                            strokeWidth = 2.dp,
+                                                                            color = ArtPrimaryPurple
+                                                                        )
+                                                                    } else {
+                                                                        Row(
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                        ) {
+                                                                            Icon(
+                                                                                imageVector = Icons.Default.Refresh,
+                                                                                contentDescription = null,
+                                                                                modifier = Modifier.size(14.dp),
+                                                                                tint = ArtTextDark
+                                                                            )
+                                                                            Text("Check", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ArtTextDark)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        appConfigState.checkStatusFeedback?.let { feedback ->
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = if (isUpdateAvailable) ArtSecondaryPurple.copy(alpha = 0.5f) else Color(0xFFF0FDF4),
+                                                                border = BorderStroke(1.dp, if (isUpdateAvailable) ArtPrimaryPurple.copy(alpha = 0.3f) else Color(0xFFBBF7D0)),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                Text(
+                                                                    text = feedback,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = if (isUpdateAvailable) ArtPrimaryPurple else Color(0xFF15803D),
+                                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
 
                                                 HorizontalDivider(color = ArtBorderDark.copy(alpha = 0.4f))
 
@@ -2237,7 +2511,7 @@ fun HomeScreen(
                                                 color = ArtTextDark
                                             )
                                             Text(
-                                                text = "Version 2.0.1",
+                                                text = "Version ${BuildConfig.VERSION_NAME}",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = ArtPrimaryPurple
