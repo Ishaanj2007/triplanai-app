@@ -1906,7 +1906,7 @@ fun HomeScreen(
                                                                 letterSpacing = 0.8.sp
                                                             )
                                                             Text(
-                                                                text = "9967973800@ybl",
+                                                                text = "jadhavishaan64@okaxis",
                                                                 fontSize = 14.sp,
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = ArtTextDark
@@ -1916,7 +1916,7 @@ fun HomeScreen(
                                                         TextButton(
                                                             onClick = {
                                                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                                val clip = android.content.ClipData.newPlainText("UPI ID", "9967973800@ybl")
+                                                                val clip = android.content.ClipData.newPlainText("UPI ID", "jadhavishaan64@okaxis")
                                                                 clipboard.setPrimaryClip(clip)
                                                                 android.widget.Toast.makeText(context, "UPI ID copied", android.widget.Toast.LENGTH_SHORT).show()
                                                             },
@@ -1946,7 +1946,7 @@ fun HomeScreen(
                                                 Button(
                                                     onClick = {
                                                         try {
-                                                            val upiUri = Uri.parse("upi://pay?pa=9967973800@ybl&pn=Ishaan&cu=INR")
+                                                            val upiUri = Uri.parse("upi://pay?pa=jadhavishaan64@okaxis&pn=Ishaan&cu=INR")
                                                             val upiIntent = Intent(Intent.ACTION_VIEW, upiUri)
                                                             context.startActivity(upiIntent)
                                                         } catch (e: Exception) {
@@ -1988,7 +1988,7 @@ fun HomeScreen(
                                                 OutlinedButton(
                                                     onClick = {
                                                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                        val clip = android.content.ClipData.newPlainText("UPI ID", "9967973800@ybl")
+                                                        val clip = android.content.ClipData.newPlainText("UPI ID", "jadhavishaan64@okaxis")
                                                         clipboard.setPrimaryClip(clip)
                                                         android.widget.Toast.makeText(context, "UPI ID copied", android.widget.Toast.LENGTH_SHORT).show()
                                                     },
