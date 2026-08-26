@@ -1,376 +1,353 @@
+
+<div align="center">
+
+<!-- Replace this src with your logo -->
+<img src="screenshots/app_icon.jpeg" width="150" alt="TriplanAI Logo">
+
 # TriplanAI
 
-> **Plan less. Explore more.**
+### Plan less. Explore more.
 
-TriplanAI is an AI-powered travel planning application designed to turn a simple destination idea into a personalized, structured travel plan.
+AI-powered travel planning that turns your destination, preferences, budget, and travel style into a structured trip itinerary.
 
-Instead of manually searching for places, estimating budgets, deciding how many days are needed, finding suitable stays, and figuring out routes, TriplanAI brings the planning process together in one place.
+<br>
 
-Enter your destination, choose your trip preferences, and let TriplanAI build an itinerary around **your time, budget, travel style, and preferences**.
+<img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white">
+<img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white">
+<img src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white">
+<img src="https://img.shields.io/badge/Gemini%20AI-8E75B2?style=for-the-badge&logo=google&logoColor=white">
+<img src="https://img.shields.io/badge/Groq-F55036?style=for-the-badge&logo=groq&logoColor=white">
 
----
+<br><br>
 
-## ✨ What is TriplanAI?
+<img src="screenshots/mainscreen.png" width="220">
+<img src="screenshots/planningscreen2.png" width="220">
+<img src="screenshots/genratedscreen.png" width="220">
 
-Planning a trip often means jumping between multiple apps and websites:
-
-* Where should I go?
-* How many days do I need?
-* How much will the trip cost?
-* Where should I stay?
-* What should I eat?
-* Which places are actually worth visiting?
-* What's the best route?
-* Should I travel by train, flight, bus, or car?
-* Is my budget realistic?
-
-TriplanAI is designed to answer these questions through a single travel-planning experience.
-
-The application combines structured trip preferences with AI-generated recommendations to create a practical itinerary tailored to the traveller.
+</div>
 
 ---
 
-## 🧭 Core Features
+## About App -
 
-### 🤖 AI-Powered Itinerary Generation
+**TriplanAI** is an Android travel planning app that uses AI to transform a simple destination idea into a personalized itinerary.
 
-Generate a personalized day-by-day itinerary using Google Gemini.
+Choose your destination, trip duration, budget, travel style, transportation, and traveller preferences — TriplanAI generates a structured plan designed around your trip.
 
-TriplanAI considers factors such as:
-
-* Destination
-* Trip duration
-* Number of travellers
-* Travel style
-* Budget
-* Transportation preference
-* Traveller type
-* Accommodation preferences
-
-The result is a structured travel plan rather than a generic list of recommendations.
+Instead of jumping between multiple apps to figure out what to do, where to stay, how much to spend, and how to organize each day, TriplanAI brings the planning process into one experience.
 
 ---
+
+## ✨ Features
+
+### 🤖 AI Itinerary Generation
+
+Generate personalized travel itineraries using **Google Gemini**.
+
+The generated plan can include:
+
+- Day-by-day activities
+- Places to visit
+- Food suggestions
+- Transportation
+- Estimated costs
+- Timing suggestions
+- Travel notes
 
 ### 💰 Budget Planning
 
-Choose the type of trip you want:
+Plan trips around your preferred spending level:
 
-* Budget Friendly
-* Mid Range
-* Luxury
+- Budget Friendly
+- Mid Range
+- Luxury
 
-The generated itinerary provides estimated spending across different categories such as:
+The itinerary can provide estimated costs for accommodation, food, transportation, activities, and other expenses.
 
-* Accommodation
-* Food
-* Transportation
-* Activities
-* Entry fees
-* Miscellaneous expenses
+### 🗓️ Structured Day Plans
 
-The goal is to help travellers understand the approximate cost before committing to a trip.
+Trips are organized into individual days so the itinerary is easier to understand and follow.
 
----
+### 🏨 Stay & Food Recommendations
 
-### 🗓️ Day-by-Day Trip Planning
-
-Trips are organized into individual days with activities arranged into a practical sequence.
-
-Each day can include:
-
-* Places to visit
-* Activities
-* Food suggestions
-* Estimated costs
-* Transportation
-* Timing suggestions
-* Useful travel notes
-
-This makes the generated itinerary easier to follow during an actual trip.
-
----
-
-### 🏨 Stay & Food Suggestions
-
-TriplanAI can provide accommodation and food recommendations based on the selected destination and budget.
-
-The recommendations are intended to help users understand where they could stay, eat, and explore without manually researching everything from scratch.
-
-> **Note:** AI-generated recommendations, prices, availability, and travel information should always be verified before travelling.
-
----
+Get AI-generated suggestions for accommodation and food based on your destination and preferences.
 
 ### 🧭 Route Planning
 
-The app provides simplified route information for the generated trip.
-
-Users can explore:
-
-* Starting location
-* Destination
-* Transportation options
-* Approximate travel routes
-* Alternative route plans
-
-The application is designed to provide a simplified planning view while allowing users to continue navigation through external map services when appropriate.
-
----
+View simplified transportation and route information for your generated trip.
 
 ### 💾 Saved Trips
 
-Generated itineraries can be saved so users don't need to regenerate the same trip repeatedly.
+Save generated itineraries locally and access them later without regenerating the entire trip.
 
-Saved trips can be revisited later, helping reduce unnecessary AI generations and making previously planned trips easier to access.
+### 💬 TripAsk
 
----
+A lightweight AI assistant designed specifically for the currently generated trip.
 
-## ✨ TripAsk
+Ask things like:
 
-TriplanAI also includes **TripAsk**, a lightweight AI assistant specifically designed for the currently generated itinerary.
+> What should I pack?
 
-TripAsk is intentionally **not a general-purpose chatbot**.
+> Is Day 2 too hectic?
 
-It focuses on short, useful travel questions such as:
+> How can I save money?
 
-> "What should I pack?"
+> What food should I try?
 
-> "Is this route good?"
-
-> "Can I save money?"
-
-> "What food should I try?"
-
-> "Is Day 2 too hectic?"
-
-Responses are intentionally short and direct so TripAsk feels like a quick travel utility rather than another ChatGPT-style conversation.
-
-### TripAsk Technology
-
-TripAsk uses:
-
-**Groq + Llama 3.1 8B Instant**
-
-The model is optimized for quick contextual questions and short responses.
-
-The full itinerary generation and TripAsk systems are intentionally separated:
-
-```text
-Full Itinerary
-      ↓
-Google Gemini
-
-TripAsk
-      ↓
-Groq
-      ↓
-Llama 3.1 8B Instant
-```
-
----
-
-## 🎨 Design
-
-TriplanAI uses a modern pastel visual language with a soft neobrutalist influence.
-
-The design focuses on:
-
-* Clear visual hierarchy
-* Rounded cards
-* Pastel accents
-* Expressive typography
-* Compact travel information
-* Responsive layouts
-* Minimal visual clutter
-
-The interface is designed to work across different phone sizes and adapt to larger screens where possible.
-
----
-
-## 📱 Application Flow
-
-```text
-Open TriplanAI
-      ↓
-Enter Destination
-      ↓
-Select Trip Preferences
-      ↓
-Choose Duration
-      ↓
-Set Budget
-      ↓
-Choose Traveller Type
-      ↓
-Choose Transportation
-      ↓
-Generate Itinerary
-      ↓
-Explore Trip
- ┌────┼──────┬──────┐
- ↓    ↓      ↓      ↓
-Overview Day Plan Hotels Routes
-      ↓
-   TripAsk
-      ↓
- Ask questions about the current trip
-      ↓
- Save Trip
-```
+TripAsk uses **Groq + gpt-oss-120b** for fast contextual responses.
 
 ---
 
 ## 🧠 AI Architecture
 
-TriplanAI intentionally uses different AI systems for different purposes.
+TriplanAI separates its AI workloads instead of using one model for everything.
+
+```text
+                  TriplanAI
+                      │
+          ┌───────────┴───────────┐
+          │                       │
+          ▼                       ▼
+    Google Gemini              Groq
+          │                       │
+          ▼                       ▼
+ Full Trip Planning        TripAsk Assistant
+          │                       │
+          ▼                       ▼
+   Complete Itinerary      Quick Contextual
+                           Travel Answers
+````
 
 ### Google Gemini
 
-Used for:
+Used for the main travel-planning experience:
 
-* Full itinerary generation
-* Trip planning
+* Itinerary generation
 * Budget planning
-* Day-by-day recommendations
-* Travel suggestions
-* Route planning context
+* Daily activities
+* Travel recommendations
+* Route context
 
-### Groq + Llama 3.1 8B Instant
+### Groq + gpt-oss-120b
 
-Used exclusively for:
+Used for:
 
 * TripAsk
 * Short travel questions
-* Contextual suggestions
-* Lightweight reasoning
-* Quick travel assistance
-
-This separation keeps the lightweight assistant fast without replacing the main itinerary-generation system.
+* Contextual assistance
+* Fast responses
 
 ---
 
-## 🛠️ Technology Stack
+## 📱 Screenshots
 
-Current project technologies include:
+<div align="center">
 
-* **Android**
-* **Jetpack Compose**
-* **Kotlin**
-* **Google Gemini**
-* **Groq**
-* **Llama 3.1 8B Instant**
-* **Room / Local Storage**
-* **GitHub**
+<table>
+<tr>
+<td align="center">
+<img src="screenshots/mainscreen.png" width="220">
+<br>
+<b>Home</b>
+</td>
 
-The exact implementation may evolve as the project develops.
+<td align="center">
+<img src="screenshots/planingscreen.png" width="220">
+<br>
+<b>Trip Planning</b>
+</td>
 
----
+<td align="center">
+<img src="screenshots/genratedscreen.png" width="220">
+<br>
+<b>Generated Trip</b>
+</td>
+</tr>
 
-## 🔐 API & Privacy
+<tr>
+<td align="center">
+<img src="screenshots/planningscreen2.png" width="220">
+<br>
+<b>Planning Options</b>
+</td>
 
-TriplanAI may use external AI services to generate travel-related content.
+<td align="center">
+<img src="screenshots/tripaskscreen.png" width="220">
+<br>
+<b>TripAsk</b>
+</td>
 
-API credentials should **never be committed to this repository**.
+<td align="center">
+<img src="screenshots/settingsscreen.png" width="220">
+<br>
+<b>Settings</b>
+</td>
+</tr>
 
-For development or personal builds, API configuration may be provided through appropriate local configuration mechanisms.
+<tr>
+<td align="center">
+<img src="screenshots/settingsscreen2.png" width="220">
+<br>
+<b>Settings & AI</b>
+</td>
 
-Never place production API keys directly inside the source code or APK.
+<td align="center">
+<img src="screenshots/styletonescreen.png" width="220">
+<br>
+<b>AI Tone</b>
+</td>
 
----
+<td align="center">
+<img src="screenshots/genratedscreen2.png" width="220">
+<br>
+<b>Trip Details</b>
+</td>
+</tr>
 
-## ⚠️ Important Disclaimer
+</table>
 
-TriplanAI uses AI to generate travel information and recommendations.
+</div>
 
-AI-generated information may contain inaccuracies or become outdated.
+## 🛠️ Built With
 
-This includes:
-
-* Hotel information
-* Prices
-* Routes
-* Travel times
-* Weather-related information
-* Attraction availability
-* Opening hours
-* Transportation information
-* Recommendations
-
-Always verify important information through official sources before making travel or financial decisions.
-
-TriplanAI does not guarantee the accuracy, availability, pricing, or suitability of any recommendation.
-
----
-
-## 🚧 Project Status
-
-**Current Version: `2.0.1`**
-
-TriplanAI is currently an evolving personal/development project.
-
-The application is being developed iteratively, with a focus on:
-
-* Better responsive UI
-* Improved itinerary generation
-* More useful route planning
-* Better travel recommendations
-* TripAsk improvements
-* Saved-trip experience
-* More reliable AI integrations
-* Real-world travel data integration
-
-Some planned features may not yet be implemented.
-
----
-
-## 🗺️ Roadmap
-
-Planned improvements include:
-
-* [ ] Better real-world place and hotel imagery
-* [ ] Improved map and route visualization
-* [ ] More reliable travel information
-* [ ] Improved responsive layouts
-* [ ] Better saved-trip management
-* [ ] Improved TripAsk contextual understanding
-* [ ] Calendar and trip-date improvements
-* [ ] AI personality / itinerary tone options
-* [ ] Travel reality checks
-* [ ] AI Roast Mode
-* [ ] Trip Mode for active travel
-* [ ] More advanced local/offline AI experimentation
+| Technology                 | Purpose                   |
+| -------------------------- | ------------------------- |
+| **Kotlin**                 | Android development       |
+| **Jetpack Compose**        | UI                        |
+| **Google Gemini**          | Main itinerary generation |
+| **Groq**                   | TripAsk AI                |
+| **gpt-oss-120b**           | TripAsk model             |
+| **Firebase Remote Config** | Remote app configuration  |
+| **Room / Local Storage**   | Saved trips & local data  |
+| **GitHub**                 | Source control            |
 
 ---
 
-## 🎯 Project Philosophy
+## 🔐 API Keys
 
-TriplanAI isn't meant to replace every travel application.
+TriplanAI is designed so API credentials should **not be hardcoded into the application source code**.
 
-The idea is much simpler:
+Never commit private API keys to GitHub.
 
-> **Give the app a destination and your preferences, and get a practical starting point for your trip.**
+For development, configure your API credentials through the appropriate local configuration/environment mechanism.
 
-The focus is on reducing the friction between:
+---
 
-**"I want to go somewhere."**
+## 📥 Download
 
-and
+<div align="center">
 
-**"Here's how I can actually make that trip happen."**
+<a href="https://github.com/Ishaanj2007/triplanai-app/releases">
+
+<img src="https://img.shields.io/badge/Download%20TriplanAI-APK-7F52FF?style=for-the-badge&logo=android&logoColor=white" alt="Download APK">
+
+</a>
+
+<br><br>
+
+Download the latest APK from the **Releases** page and install it on your Android device.
+
+<br>
+
+<a href="https://github.com/Ishaanj2007/triplanai-app/releases">
+<b>→ View Latest Release</b>
+</a>
+
+</div>
+
+## 📱 Application Flow
+
+```text
+Destination
+     ↓
+Trip Preferences
+     ↓
+Duration & Budget
+     ↓
+Traveller Type
+     ↓
+Transportation
+     ↓
+Generate
+     ↓
+AI Itinerary
+     ↓
+┌─────────┬─────────┬─────────┬─────────┐
+│Overview │Day Plan │  Stay   │ Routes  │
+└─────────┴─────────┴─────────┴─────────┘
+     ↓
+   TripAsk
+     ↓
+  Save Trip
+```
+
+---
+
+
+
+## 📌 Project Status
+
+**Current Version: `2.2.0`**
+
+TriplanAI is an actively developed personal Android project.
+
+The application is continuously evolving with improvements to:
+
+* AI generation
+* UI/UX
+* Travel planning
+* TripAsk
+* Saved trips
+* Remote configuration
+* Reliability
 
 ---
 
 ## 👨‍💻 Developer
 
-**Ishaan Jadhav**
+<div align="center">
 
-Independent developer and creator of TriplanAI.
+### Ishaan Jadhav
 
-### Connect
+Independent developer & creator of **TriplanAI**
 
-* Instagram: `@ishaanj_19`
-* GitHub: `@ishaanj2007`
-* WhatsApp: `@ishaan_jadhav`
-* Email: `ishaanjadhav64@gmail.com`
+<br>
+
+<a href="https://github.com/Ishaanj2007">
+<img src="https://img.shields.io/badge/GitHub-Ishaanj2007-181717?style=for-the-badge&logo=github">
+</a>
+
+<a href="https://instagram.com/ishaanj_19">
+<img src="https://img.shields.io/badge/Instagram-@ishaanj__19-E4405F?style=for-the-badge&logo=instagram&logoColor=white">
+</a>
+
+</div>
+
+---
+
+## ☕ Support the Developer
+
+<div align="center">
+
+### Enjoying TriplanAI?
+
+TriplanAI is an independent project built and maintained with a lot of experimentation, time, and caffeine.
+
+If you find it useful and want to support continued development, you can send a small contribution.
+
+<br>
+
+</a>
+
+<a href="upi://pay?pa=jadhavishaan64@okaxis&pn=Ishaan%20Jadhav&cu=INR">
+  <img src="https://img.shields.io/badge/Support%20via%20UPI-jadhavishaan64%40okaxis-5F259F?style=for-the-badge" alt="Support via UPI">
+</a>
+
+Every bit of support helps with:
+
+AI usage • Development • Testing • Infrastructure • New features
+
+</div>
 
 ---
 
@@ -382,12 +359,16 @@ See [`LICENSE`](LICENSE) for details.
 
 ---
 
-## ⭐ About This Project
+<div align="center">
 
-TriplanAI started as an idea to make travel planning less fragmented and more personal.
+### TriplanAI
 
-Instead of searching across multiple platforms for destinations, budgets, hotels, routes, food, and activities, the goal is to create one simple experience where AI helps organize the entire trip.
+**Plan less. Explore more.**
 
-It is a project built around experimentation, learning, and turning an idea into something people can actually use.
+Built with curiosity & code.
 
-**Built with curiosity & code.**
+⭐ If you like the project, consider giving it a star.
+
+</div>
+
+
